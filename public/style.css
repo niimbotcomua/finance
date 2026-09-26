@@ -343,3 +343,40 @@ body.has-tabbar #toast { bottom: 104px; }
 .tab.active { color: var(--accent); background: rgb(255 255 255 / 0.06); }
 .tab-icon svg { width: 24px; height: 24px; display: block; }
 .group-info { flex: 1; min-width: 0; }
+
+/* Шапка групи: назва + меню «☰» */
+.group-head { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+.group-head > :first-child { flex: 1; min-width: 0; margin-bottom: 0; }
+.menu { position: relative; flex: 0 0 auto; }
+.menu-button {
+  width: 44px; height: 44px; padding: 0; display: grid; place-items: center;
+  background: var(--card); color: var(--text); border-radius: 50%;
+}
+.menu-button svg { width: 22px; height: 22px; }
+.menu-button.open, .menu-button.has-active { background: var(--card-2); color: var(--accent); }
+.menu-list {
+  position: absolute; z-index: 15; top: calc(100% + 8px); right: 0;
+  min-width: 240px; padding: 6px; display: grid; gap: 2px;
+  background: rgb(36 36 42 / 0.92);
+  backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgb(255 255 255 / 0.06); border-radius: 18px;
+  box-shadow: 0 16px 40px rgb(0 0 0 / 0.5);
+}
+.menu-item {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 11px 12px; border-radius: 12px; text-align: left;
+  background: none; color: var(--text); font-weight: 600;
+}
+.menu-item:hover { background: rgb(255 255 255 / 0.06); filter: none; }
+.menu-item > span:first-child { flex: 1; }
+.menu-item.active { color: var(--accent); }
+.menu-count {
+  min-width: 22px; padding: 1px 7px; border-radius: 999px; font-size: 12px; text-align: center;
+  background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent);
+}
+.menu-check { color: var(--accent); }
+
+/* Відкритий із меню блок — з хрестиком «закрити» */
+.panel { position: relative; scroll-margin-top: 80px; }
+.panel-close { position: absolute; top: 18px; right: 16px; font-size: 16px; }
+.panel .card > h2, .panel .card-head { margin-right: 32px; }
