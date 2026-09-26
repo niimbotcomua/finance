@@ -4,6 +4,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 import { computeBalances, convertAmount, convertShares, remainderShare, simplifyDebts, splitEqually } from './balances.js';
 import { filterByPeriod, summarize } from './analytics.js';
 import { REPORT_PERIODS, buildPdfDoc, buildReport, writeWorkbook } from './report.js';
+import { FILTER_PERIODS, GROUP_BALANCE_FILTERS, filterExpenses, filterGroups, isFiltered } from './filters.js';
 
 const configured = SUPABASE_URL.startsWith('https://') && !SUPABASE_ANON_KEY.includes('ВСТАВТЕ');
 const supabase = configured ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
@@ -1007,6 +1008,86 @@ async function setGroupArchived(groupId, archived) {
 }
 
 /** Список груп: активні (showArchive = false) або архівні. */
+/**
+ * Панель пошуку й фільтрів: рядок пошуку завжди видно, решта — під кнопкою «Фільтри».
+ * state — об'єкт фільтра (змінюється на місці), onChange() — перемалювати результати.
+ * extras(state, onChange) — додаткові поля (списки, перемикачі) для розгорнутої частини.
+ */
+function filterBar(state, onChange, { placeholder, extras = () => [] } = {}) {
+  const search = h('input', {
+    type: 'search', class: 'filter-search', value: state.query ?? '', placeholder, 'aria-label': placeholder,
+    enterKeyHint: 'search',
+  });
+  search.addEventListener('input', () => { state.query = search.value; changed(); });
+  const panel = h('div', { class: 'filter-panel', hidden: !state.open });
+  const count = h('span', { class: 'filter-count' });
+  const toggle = h('button', {
+    type: 'button', class: 'secondary filter-toggle', 'aria-expanded': String(Boolean(state.open)),
+    onClick: () => {
+      state.open = !state.open;
+      panel.hidden = !state.open;
+      toggle.setAttribute('aria-expanded', String(state.open));
+      toggle.classList.toggle('open', state.open);
+    },
+  }, 'Фільтри', count);
+  const reset = h('button', {
+    type: 'button', class: 'link filter-reset',
+    onClick: () => {
+      Object.assign(state, { query: '', period: 'all', from: '', to: '', balance: 'all', categoryId: '', payerId: '', onlyMine: false });
+      search.value = '';
+      renderPanel();
+      changed();
+    },
+  }, 'Скинути');
+
+  function activeCount() {
+    return [state.period && state.period !== 'all', state.balance && state.balance !== 'all',
+      state.categoryId, state.payerId, state.onlyMine].filter(Boolean).length;
+  }
+  function changed() {
+    const n = activeCount();
+    count.textContent = n ? String(n) : '';
+    toggle.classList.toggle('has-active', n > 0);
+    reset.hidden = !isFiltered(state);
+    onChange();
+  }
+  function renderPanel() {
+    const periods = h('div', { class: 'segmented', role: 'radiogroup', 'aria-label': 'Період' },
+      Object.entries(FILTER_PERIODS).map(([value, label]) => h('button', {
+        type: 'button', role: 'radio', 'aria-checked': String((state.period ?? 'all') === value),
+        class: (state.period ?? 'all') === value ? 'active' : '',
+        onClick: () => { state.period = value; renderPanel(); changed(); },
+      }, label)));
+    const dateInput = (key, label) => {
+      const input = h('input', { type: 'date', value: state[key] ?? '', 'aria-label': label });
+      input.addEventListener('change', () => { state[key] = input.value; changed(); });
+      return h('label', {}, label, input);
+    };
+    panel.replaceChildren(...[
+      h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Дата'), periods),
+      state.period === 'custom' ? h('div', { class: 'row filter-dates' }, dateInput('from', 'Від'), dateInput('to', 'До')) : null,
+      ...extras(state, () => { renderPanel(); changed(); }),
+    ].filter(Boolean));
+  }
+  renderPanel();
+  changed();
+  return h('div', { class: 'filter-bar' },
+    h('div', { class: 'filter-row' }, h('div', { class: 'filter-search-wrap' }, search), toggle),
+    panel,
+    reset);
+}
+
+/** Випадний список для панелі фільтрів. */
+function filterSelect(label, value, options, onPick) {
+  const select = h('select', { 'aria-label': label },
+    options.map(([v, text]) => h('option', { value: v, selected: String(v) === String(value ?? '') }, text)));
+  select.addEventListener('change', () => onPick(select.value));
+  return h('label', {}, label, select);
+}
+
+// Фільтри списку груп — живуть між перемальовуваннями сторінки.
+const groupsFilter = { query: '', period: 'all', from: '', to: '', balance: 'all', open: false };
+
 async function renderGroups(showArchive = false) {
   const [groupRows, currencies, settings] = await Promise.all([
     run(supabase.rpc('group_list')),
@@ -1062,13 +1143,38 @@ async function renderGroups(showArchive = false) {
         : null,
     );
 
+  // Пошук і фільтри по групах (коли груп більше однієї).
+  function groupsResults() {
+    const list = h('ul', { class: 'list group-tiles' });
+    const empty = h('div', { class: 'filter-empty', hidden: true });
+    const render = () => {
+      const shown = filterGroups(groups, groupsFilter, today());
+      list.replaceChildren(...shown.map(groupItem));
+      list.hidden = shown.length === 0;
+      empty.hidden = shown.length > 0;
+      empty.textContent = 'Нічого не знайдено — змініть пошук чи фільтри.';
+    };
+    const bar = groups.length > 1 && filterBar(groupsFilter, render, {
+      placeholder: 'Пошук групи за назвою',
+      extras: (state, update) => [
+        h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Баланс'),
+          h('div', { class: 'segmented' }, Object.entries(GROUP_BALANCE_FILTERS).map(([value, label]) => h('button', {
+            type: 'button', class: (state.balance ?? 'all') === value ? 'active' : '',
+            onClick: () => { state.balance = value; update(); },
+          }, label)))),
+      ],
+    });
+    render();
+    return h('div', { class: 'group-results' }, bar, list, empty);
+  }
+
   if (showArchive) {
     mount(
       h('h1', {}, 'Архів'),
       h('div', { class: 'card' },
         groups.length === 0
           ? h('p', { class: 'empty' }, 'В архіві порожньо. Групу, де всі розрахувалися, можна перенести сюди кнопкою «В архів» на її сторінці.')
-          : h('ul', { class: 'list group-tiles' }, groups.map(groupItem)),
+          : groupsResults(),
       ),
       groups.length > 0 && h('p', { class: 'sub hint' },
         'Архів бачите лише ви — в інших учасників група лишається як була. Якщо в групі знову з\'являться борги, вона сама повернеться до активних.'),
@@ -1110,7 +1216,7 @@ async function renderGroups(showArchive = false) {
     h('div', { class: 'card' },
       groups.length === 0
         ? h('p', { class: 'empty' }, archivedCount > 0 ? 'Активних груп немає. Створіть нову нижче.' : 'У вас ще немає груп. Створіть першу нижче.')
-        : h('ul', { class: 'list group-tiles' }, groups.map(groupItem)),
+        : groupsResults(),
     ),
     h('div', { class: 'card' }, h('h2', {}, 'Нова група'), form),
   );
@@ -1223,7 +1329,7 @@ async function renderGroup(groupId) {
       }, '✕'),
     )] : []));
   };
-  if (groupUi.groupId !== groupId) Object.assign(groupUi, { groupId, panel: null, period: 'all', inviteOpen: false, openExpenses: new Set() });
+  if (groupUi.groupId !== groupId) Object.assign(groupUi, { groupId, panel: null, period: 'all', inviteOpen: false, openExpenses: new Set(), expenseFilter: newExpenseFilter() });
   renderPanels();
 
   // Архів: коли всі розрахувалися, групу можна сховати (лише для себе).
@@ -1395,7 +1501,8 @@ function reportCard(group, members, expenses, settlements, categoryOf) {
 }
 
 // Стан сторінки групи, що переживає перемальовування (відкрита панель, період аналітики, блок запрошення).
-const groupUi = { groupId: null, panel: null, period: 'all', inviteOpen: false, openExpenses: new Set() };
+const newExpenseFilter = () => ({ query: '', period: 'all', from: '', to: '', categoryId: '', payerId: '', onlyMine: false, open: false });
+const groupUi = { groupId: null, panel: null, period: 'all', inviteOpen: false, openExpenses: new Set(), expenseFilter: newExpenseFilter() };
 
 /** Кнопка «☰» з випадаючим списком блоків групи. onPick(key) відкриває/закриває блок. */
 function groupMenu(defs, onPick) {
@@ -2397,6 +2504,9 @@ function personPill(profile, amount = null) {
     amount === null ? null : h('span', { class: 'pill-amount' }, formatMoney(amount)));
 }
 
+/** Сума без знака валюти («1 000,50») — для колонок, де валюта вказана в заголовку. */
+const formatPlain = (kopecks) => (kopecks / 100).toLocaleString('uk-UA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 /** Частка поточного користувача у витраті (у копійках основної валюти); 0 — не бере участі. */
 const myShareOf = (e) => e.shares.find((s) => s.userId === currentUser.id)?.amount ?? 0;
 
@@ -2404,11 +2514,12 @@ const myShareOf = (e) => e.shares.find((s) => s.userId === currentUser.id)?.amou
 function myShareCell(e) {
   const mine = myShareOf(e);
   return h('div', { class: 'expense-mine', title: 'Ваша частка в цій витраті' },
-    mine > 0 ? h('span', { class: 'amount mine' }, formatMoney(mine)) : h('span', { class: 'amount sub' }, '—'),
+    mine > 0 ? h('span', { class: 'amount mine' }, formatPlain(mine)) : h('span', { class: 'amount sub' }, '—'),
     e.paidBy === currentUser.id ? h('div', { class: 'sub' }, 'ви платили') : null);
 }
 
-function expensesCard(groupId, expenses, profileOf, reload, onEdit) {
+function expensesCard(groupId, allExpenses, profileOf, reload, onEdit) {
+  const f = groupUi.expenseFilter;
   const expenseItem = (e) => {
     // Рівний поділ: частки відрізняються щонайбільше на копійку (залишок від ділення).
     const amounts = e.shares.map((s) => s.amount);
@@ -2419,9 +2530,10 @@ function expensesCard(groupId, expenses, profileOf, reload, onEdit) {
           h('div', { class: 'expense-title' }, e.description),
           h('div', { class: 'sub' }, formatDate(e.date)),
         ),
+        // Колонка «Сума» — в основній валюті (знак у заголовку); для іншої валюти під нею — сума у валюті.
         h('div', { class: 'expense-amount' },
-          h('span', { class: 'amount' }, e.currency ? formatMoney(e.originalAmount, e.currency) : formatMoney(e.amount)),
-          e.currency ? h('div', { class: 'sub' }, `≈ ${formatMoney(e.amount)}`) : null,
+          h('span', { class: 'amount' }, formatPlain(e.amount)),
+          e.currency ? h('div', { class: 'sub' }, formatMoney(e.originalAmount, e.currency)) : null,
         ),
         myShareCell(e),
         h('span', { class: 'chevron', 'aria-hidden': 'true' }, '›'),
@@ -2472,30 +2584,75 @@ function expensesCard(groupId, expenses, profileOf, reload, onEdit) {
   };
 
   // Ширина колонок — за найдовшою сумою (вимірюємо реальним шрифтом), щоб шапка, рядки й «Разом» стояли рівно.
+  const expenses = allExpenses; // ширини — за всіма витратами, щоб колонки не «стрибали» під час пошуку
   const measure = h('canvas').getContext('2d');
   measure.font = `700 15px ${getComputedStyle(document.body).fontFamily}`;
   const longest = (texts) => Math.max(...texts.map((t) => measure.measureText(t).width));
-  const amountTexts = [formatMoney(expenses.reduce((sum, e) => sum + e.amount, 0)),
-    ...expenses.map((e) => (e.currency ? formatMoney(e.originalAmount, e.currency) : formatMoney(e.amount)))];
-  const mineTexts = [formatMoney(expenses.reduce((sum, e) => sum + myShareOf(e), 0)), 'Ваша частка'];
+  const amountTexts = [formatPlain(expenses.reduce((sum, e) => sum + e.amount, 0)), ...expenses.map((e) => formatPlain(e.amount))];
+  const mineTexts = [formatPlain(expenses.reduce((sum, e) => sum + myShareOf(e), 0))];
+  // Заголовки колонок — дрібнішим шрифтом, міряємо окремо.
+  const headerFont = `600 12px ${getComputedStyle(document.body).fontFamily}`;
+  const headerWidth = (text) => { measure.font = headerFont; const w = measure.measureText(text).width; measure.font = `700 15px ${getComputedStyle(document.body).fontFamily}`; return w; };
+  const amountHeader = `Сума, ${currencySymbol(baseCurrency)}`;
+  const mineHeader = 'Ваша частка';
+  // Результати пошуку/фільтрів перемальовуються окремо — поле пошуку не втрачає фокус.
+  const results = h('div', {});
+  const renderResults = () => {
+    const shown = filterExpenses(allExpenses, f, {
+      meId: currentUser.id,
+      nameOf: (id) => profileOf(id).name,
+      categoryName: (id) => allExpenses.find((e) => e.categoryId === id)?.category?.name ?? '',
+    }, today());
+    results.replaceChildren(...(shown.length === 0
+      ? [h('div', { class: 'filter-empty' }, 'Нічого не знайдено — змініть пошук чи фільтри.')]
+      : [
+        h('ul', { class: 'list expenses' }, shown.map(expenseItem)),
+        h('div', { class: 'expense-cols expense-total' },
+          h('span', {}, isFiltered(f) ? `Знайдено (${shown.length} з ${allExpenses.length})` : `Разом (${shown.length})`),
+          h('span', { class: 'amount' }, formatPlain(shown.reduce((sum, e) => sum + e.amount, 0))),
+          h('span', { class: 'amount mine' }, formatPlain(shown.reduce((sum, e) => sum + myShareOf(e), 0))),
+          h('span', {})),
+      ]));
+  };
+
+  // Теги й платники — лише ті, що трапляються у витратах групи.
+  const usedCategories = [...new Map(allExpenses.filter((e) => e.category).map((e) => [e.categoryId, e.category])).values()];
+  const payers = [...new Set(allExpenses.map((e) => e.paidBy))];
+  const bar = allExpenses.length > 1 && filterBar(f, renderResults, {
+    placeholder: 'Пошук: опис, тег, хто платив, сума',
+    extras: (state, update) => [
+      h('div', { class: 'row filter-selects' },
+        usedCategories.length > 0 && filterSelect('Тег', state.categoryId, [
+          ['', 'Усі теги'], ...usedCategories.map((c) => [String(c.id), categoryLabel(c)]), ['none', 'Без тегу'],
+        ], (v) => { state.categoryId = v; update(); }),
+        filterSelect('Хто платив', state.payerId, [
+          ['', 'Усі'], ...payers.map((id) => [id, id === currentUser.id ? `${profileOf(id).name} (ви)` : profileOf(id).name]),
+        ], (v) => { state.payerId = v; update(); }),
+      ),
+      h('label', { class: 'filter-switch' },
+        h('input', {
+          type: 'checkbox', checked: Boolean(state.onlyMine),
+          onChange: (e) => { state.onlyMine = e.target.checked; update(); },
+        }),
+        'Лише мої витрати (я платив чи маю частку)'),
+    ],
+  });
+  renderResults();
+
   const card = h('div', { class: 'card' },
     h('h2', {}, 'Витрати'),
-    expenses.length === 0
+    allExpenses.length === 0
       ? h('p', { class: 'empty' }, 'Витрат ще немає.')
       : [
+        bar,
         h('div', { class: 'expense-cols', 'aria-hidden': 'true' },
-          h('span', {}), h('span', {}, 'Сума'), h('span', {}, 'Ваша частка'), h('span', {})),
-        h('ul', { class: 'list expenses' }, expenses.map(expenseItem)),
-        h('div', { class: 'expense-cols expense-total' },
-          h('span', {}, `Разом (${expenses.length})`),
-          h('span', { class: 'amount' }, formatMoney(expenses.reduce((sum, e) => sum + e.amount, 0))),
-          h('span', { class: 'amount mine' }, formatMoney(expenses.reduce((sum, e) => sum + myShareOf(e), 0))),
-          h('span', {})),
+          h('span', {}), h('span', {}, amountHeader), h('span', {}, mineHeader), h('span', {})),
+        results,
       ],
   );
   if (expenses.length > 0) {
-    card.style.setProperty('--amount-w', `${Math.ceil(longest(amountTexts)) + 2}px`);
-    card.style.setProperty('--mine-w', `${Math.ceil(longest(mineTexts)) + 2}px`);
+    card.style.setProperty('--amount-w', `${Math.ceil(Math.max(longest(amountTexts), headerWidth(amountHeader))) + 2}px`);
+    card.style.setProperty('--mine-w', `${Math.ceil(Math.max(longest(mineTexts), headerWidth(mineHeader))) + 2}px`);
   }
   return card;
 }

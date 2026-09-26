@@ -196,3 +196,9 @@ html[data-design="nova"] .checks input[type=checkbox]:focus:not(:focus-visible) 
 html[data-design="nova"] details.expense[open] { border-radius: 8px; background: #fff; box-shadow: inset 0 0 0 1px var(--border), inset 3px 0 0 var(--accent); }
 html[data-design="nova"] details.expense[open] > summary .expense-title { color: var(--text); }
 html[data-design="nova"] details.expense[open] .expense-body { background: var(--card); box-shadow: none; }
+html[data-design="nova"] .filter-panel { border-radius: 8px; background: #fff; box-shadow: inset 0 0 0 1px var(--border); }
+html[data-design="nova"] .filter-panel .segmented button { background: #fff; }
+html[data-design="nova"] .filter-panel .segmented button.active { background: #fff; color: var(--accent); }
+html[data-design="nova"] .filter-panel select, html[data-design="nova"] .filter-panel input[type=date] { background: #fff; }
+html[data-design="nova"] .filter-toggle { text-transform: none; letter-spacing: 0; font-size: 14px; }
+html[data-design="nova"] .filter-count { border-radius: 4px; }
