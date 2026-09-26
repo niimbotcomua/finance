@@ -13,6 +13,20 @@ export function splitEqually(amount, userIds) {
 }
 
 /**
+ * Автопідрахунок залишку для розподілу «точними сумами».
+ * entries: [{ value: копійки | null, manual: true — ввів сам користувач }].
+ * Залишок (сума мінус введені вручну частки) отримує останнє поле, яке користувач не чіпав.
+ * Повертає { index, value } (value = null, якщо залишку немає або він від'ємний) або null, якщо всі поля введено вручну.
+ */
+export function remainderShare(amount, entries) {
+  const index = entries.findLastIndex((e) => !e.manual);
+  if (index === -1) return null;
+  if (amount === null) return { index, value: null };
+  const rest = amount - entries.reduce((sum, e) => sum + (e.manual ? e.value ?? 0 : 0), 0);
+  return { index, value: rest > 0 ? rest : null };
+}
+
+/**
  * Рахує чистий баланс кожного учасника.
  * Додатний баланс — учаснику винні гроші, від'ємний — учасник винен.
  */

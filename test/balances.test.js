@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeBalances, simplifyDebts, splitEqually } from '../public/balances.js';
+import { computeBalances, remainderShare, simplifyDebts, splitEqually } from '../public/balances.js';
 
 test('splitEqually розподіляє залишок копійок між першими учасниками', () => {
   assert.deepEqual(splitEqually(1000, [1, 2, 3]), [
@@ -12,6 +12,20 @@ test('splitEqually розподіляє залишок копійок між п�
     splitEqually(1001, [1, 2, 3, 4]).reduce((s, x) => s + x.amount, 0),
     1001,
   );
+});
+
+test('remainderShare віддає залишок останньому незаповненому учаснику', () => {
+  const auto = { value: null, manual: false };
+  // Двоє: ввели 20 → другому 30.
+  assert.deepEqual(remainderShare(5000, [{ value: 2000, manual: true }, auto]), { index: 1, value: 3000 });
+  // Троє: ввели першого → залишок останньому; ввели й останнього → залишок середньому.
+  assert.deepEqual(remainderShare(5000, [{ value: 2000, manual: true }, auto, auto]), { index: 2, value: 3000 });
+  assert.deepEqual(remainderShare(5000, [{ value: 2000, manual: true }, auto, { value: 1000, manual: true }]), { index: 1, value: 2000 });
+  // Перебір або вже все розподілено — поле порожнє; усі введено вручну — нічого не робимо.
+  assert.deepEqual(remainderShare(5000, [{ value: 6000, manual: true }, auto]), { index: 1, value: null });
+  assert.deepEqual(remainderShare(5000, [{ value: 5000, manual: true }, auto]), { index: 1, value: null });
+  assert.deepEqual(remainderShare(null, [auto, auto]), { index: 1, value: null });
+  assert.equal(remainderShare(5000, [{ value: 5000, manual: true }]), null);
 });
 
 test('computeBalances враховує витрати та розрахунки', () => {
