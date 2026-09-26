@@ -1,0 +1,165 @@
+/*
+ * Дизайн «Плитки» — у стилі «Нової пошти» (html[data-design="nova"]).
+ * Білий фон, світло-сірі плитки без тіней, майже квадратні кути, червоний акцент,
+ * червоні кнопки великими літерами. Основні стилі — у style.css; тут лише відмінності.
+ */
+html[data-design="nova"] {
+  color-scheme: light;
+  --bg: #ffffff;
+  --card: #f4f4f6;
+  --card-2: #ffffff;
+  --text: #1b1b1f;
+  --muted: #74747c;
+  --border: #e3e3e8;
+  --accent: #da291c;
+  --accent-2: #da291c;
+  --accent-grad: #da291c;
+  --accent-text: #ffffff;
+  --positive: #1d9a50;
+  --negative: #da291c;
+  --radius: 8px;
+}
+
+html[data-design="nova"] body { background: var(--bg); }
+html[data-design="nova"] h1 { font-weight: 800; letter-spacing: -0.01em; }
+html[data-design="nova"] h2 { font-weight: 800; }
+html[data-design="nova"] a:hover { color: var(--accent); }
+html[data-design="nova"] .sub,
+html[data-design="nova"] .created { color: var(--muted); }
+html[data-design="nova"] input::placeholder,
+html[data-design="nova"] textarea::placeholder { color: #a3a3ab; }
+
+/* Шапка — біла з тонкою лінією, логотип-назва червона великими літерами */
+html[data-design="nova"] .topbar {
+  background: #fff; border-bottom: 1px solid var(--border);
+  backdrop-filter: none; -webkit-backdrop-filter: none;
+}
+html[data-design="nova"] .brand { color: var(--accent); text-transform: uppercase; font-weight: 900; font-size: 16px; letter-spacing: 0.01em; white-space: nowrap; }
+html[data-design="nova"] .topbar .me { color: var(--text); }
+
+/* Плитки: сірі, без тіней, невеликі заокруглення */
+html[data-design="nova"] .card { box-shadow: none; }
+html[data-design="nova"] .card.editing { box-shadow: inset 0 0 0 2px var(--accent); }
+
+/* Поля — білі з рамкою, майже квадратні */
+html[data-design="nova"] input,
+html[data-design="nova"] select,
+html[data-design="nova"] textarea { background: #fff; border: 1px solid var(--border); border-radius: 6px; }
+html[data-design="nova"] .invite input { background: #fff; }
+
+/* Кнопки: основна — червона, великими літерами; другорядна — біла з рамкою */
+html[data-design="nova"] button {
+  border-radius: 6px; text-transform: uppercase; letter-spacing: 0.04em; font-size: 14px;
+}
+html[data-design="nova"] button.secondary { background: #fff; color: var(--text); box-shadow: inset 0 0 0 1px var(--border); }
+html[data-design="nova"] button.secondary:hover:not(:disabled) { box-shadow: inset 0 0 0 1px var(--accent); color: var(--accent); filter: none; }
+html[data-design="nova"] button.secondary.dirty { background: var(--accent); color: #fff; box-shadow: none; }
+html[data-design="nova"] button.link,
+html[data-design="nova"] .menu-item,
+html[data-design="nova"] .carousel-dot,
+html[data-design="nova"] .carousel-arrow,
+html[data-design="nova"] .photo-remove,
+html[data-design="nova"] .design-option,
+html[data-design="nova"] .icon-option,
+html[data-design="nova"] .icon-button,
+html[data-design="nova"] .menu-button,
+html[data-design="nova"] .save-tag { text-transform: none; letter-spacing: 0; }
+html[data-design="nova"] button.link { background: none; color: var(--muted); }
+html[data-design="nova"] .carousel-dot { border-radius: 50%; }
+html[data-design="nova"] .photo-remove,
+html[data-design="nova"] .carousel-arrow { border-radius: 50%; }
+
+/* Вкладки входу — як вкладки НП: текст з червоним підкресленням */
+html[data-design="nova"] .tabs { background: none; border-bottom: 1px solid var(--border); border-radius: 0; padding: 0; gap: 0; }
+html[data-design="nova"] .tabs button { border-radius: 0; background: none; color: var(--text); box-shadow: inset 0 -3px 0 var(--accent); }
+html[data-design="nova"] .tabs button.secondary { color: var(--muted); box-shadow: none; }
+
+/* Кнопка меню — квадратна з рамкою */
+html[data-design="nova"] .menu-button { border-radius: 6px; background: #fff; color: var(--text); box-shadow: inset 0 0 0 1px var(--border); }
+html[data-design="nova"] .menu-button.open,
+html[data-design="nova"] .menu-button.has-active { background: var(--accent); color: #fff; box-shadow: none; }
+html[data-design="nova"] .menu-list {
+  background: #fff; border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.1); backdrop-filter: none;
+}
+html[data-design="nova"] .menu-item { color: var(--text); background: none; border-radius: 4px; font-size: 15px; }
+html[data-design="nova"] .menu-item:hover { background: var(--card); }
+html[data-design="nova"] .menu-item.active { color: var(--accent); }
+html[data-design="nova"] .menu-count { border-radius: 4px; background: var(--accent); color: #fff; }
+html[data-design="nova"] .menu-count.muted { background: var(--card); color: var(--muted); }
+
+/* Загальний баланс — як блакитний банер НП */
+html[data-design="nova"] .card.hero { background: #bfd7ea; color: var(--text); box-shadow: none; }
+html[data-design="nova"] .hero-label { color: #3b4a57; }
+html[data-design="nova"] .hero-amount { font-size: 40px; color: var(--text); }
+html[data-design="nova"] .hero-amount.pos .hero-sign,
+html[data-design="nova"] .hero-amount.neg .hero-sign {
+  display: table; margin-bottom: 6px; padding: 2px 8px; border-radius: 4px; opacity: 1;
+  font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: #fff;
+}
+html[data-design="nova"] .hero-amount.pos .hero-sign { background: var(--positive); }
+html[data-design="nova"] .hero-amount.neg .hero-sign { background: var(--accent); }
+
+/* Список груп — окремими плитками */
+html[data-design="nova"] .card:has(> ul.group-tiles) { background: none; padding: 0; }
+html[data-design="nova"] ul.group-tiles { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+html[data-design="nova"] ul.group-tiles li {
+  align-items: flex-start; padding: 18px; border: none; border-radius: var(--radius); background: var(--card);
+  transition: box-shadow 0.15s ease;
+}
+html[data-design="nova"] ul.group-tiles li:hover { box-shadow: inset 0 0 0 1px var(--accent); }
+html[data-design="nova"] a.group-name { font-size: 19px; font-weight: 800; }
+
+/* Рядки списків усередині плиток — білі «картки-рядки», як таблиці НП */
+html[data-design="nova"] ul.list li.is-me { background: #fff; box-shadow: inset 3px 0 0 var(--accent); border-radius: 4px; }
+html[data-design="nova"] .avatar { background: #fff; color: var(--accent); box-shadow: inset 0 0 0 1px var(--border); }
+html[data-design="nova"] .avatar-me { box-shadow: 0 0 0 2px var(--accent) !important; }
+html[data-design="nova"] .avatar-stack .avatar { box-shadow: 0 0 0 2px var(--card) !important; }
+html[data-design="nova"] .badge { border-radius: 4px; background: color-mix(in srgb, var(--accent) 10%, #fff); color: var(--accent); }
+html[data-design="nova"] .badge.muted,
+html[data-design="nova"] .tag { border-radius: 4px; background: #fff; color: var(--muted); box-shadow: inset 0 0 0 1px var(--border); }
+
+/* Пігулки учасників → прямокутні «чипи» з рамкою */
+html[data-design="nova"] .checks label { border-radius: 6px; background: #fff; box-shadow: inset 0 0 0 1px var(--border); }
+html[data-design="nova"] .checks label:has(input:checked) { background: color-mix(in srgb, var(--accent) 7%, #fff); box-shadow: inset 0 0 0 1px var(--accent); }
+html[data-design="nova"] .checks.pick label:has(input:checked) { box-shadow: inset 0 0 0 2px var(--accent); }
+html[data-design="nova"] .pill { border-radius: 6px; background: #fff; box-shadow: inset 0 0 0 1px var(--border); }
+html[data-design="nova"] .expense-body,
+html[data-design="nova"] .receipt,
+html[data-design="nova"] .invite,
+html[data-design="nova"] .stat,
+html[data-design="nova"] .archive-bar { background: #fff; border-radius: 6px; box-shadow: inset 0 0 0 1px var(--border); }
+html[data-design="nova"] .archive-bar { background: var(--card); box-shadow: none; }
+html[data-design="nova"] .receipt-actions button.secondary { background: #fff; }
+html[data-design="nova"] .shares input.auto { background: color-mix(in srgb, var(--accent) 6%, #fff); }
+html[data-design="nova"] .bar-track { background: #fff; }
+html[data-design="nova"] .bar-fill { background: var(--accent); }
+html[data-design="nova"] .icon-grid { background: #fff; box-shadow: 0 10px 30px rgb(0 0 0 / 0.1); }
+html[data-design="nova"] .carousel-slide img,
+html[data-design="nova"] .carousel-track { border-radius: 6px; }
+html[data-design="nova"] .carousel-dot { background: #c5c5cc; }
+html[data-design="nova"] .carousel-dot.active { background: var(--accent); }
+html[data-design="nova"] .social-card,
+html[data-design="nova"] .logo-frame { border-radius: 6px; }
+
+/* Нижня панель — пласка біла смуга на всю ширину, активний розділ червоний з рискою */
+html[data-design="nova"] .tabbar {
+  left: 0; right: 0; bottom: 0; transform: none; width: 100%;
+  padding: 4px 8px calc(4px + env(safe-area-inset-bottom));
+  border-radius: 0; border: none; border-top: 1px solid var(--border);
+  background: #fff; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none;
+  justify-content: center;
+}
+html[data-design="nova"] .tab { max-width: 140px; border-radius: 0; color: #8d8d95; }
+html[data-design="nova"] .tab.active { color: var(--accent); background: none; box-shadow: inset 0 3px 0 var(--accent); }
+html[data-design="nova"] body.has-tabbar main { padding-bottom: 96px; }
+html[data-design="nova"] body.has-tabbar #toast { bottom: 84px; }
+
+/* Сповіщення — темна плашка з червоною рискою */
+html[data-design="nova"] #toast { background: #1b1b1f; color: #fff; border-radius: 6px; box-shadow: inset 4px 0 0 var(--accent); }
+
+/* Мініатюра дизайну в адмінці */
+.design-preview-nova { background: #fff; box-shadow: inset 0 0 0 1px #e3e3e8; border-radius: 6px; }
+.design-preview-nova i { background: #f4f4f6; border-radius: 3px; }
+.design-preview-nova i:first-child { background: #bfd7ea; }
+.design-preview-nova i:last-child { background: #da291c; }

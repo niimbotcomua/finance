@@ -19,11 +19,12 @@ let currentUser = null;
 const DESIGNS = {
   dark: { label: 'Темний', note: 'Початковий: темний фон, рожево-помаранчеві акценти.' },
   mono: { label: 'Світлий', note: 'У стилі monobank: градієнт угорі, білі картки, чорні кнопки.' },
+  nova: { label: 'Плитки', note: 'У стилі «Нової пошти»: мінімалізм, сірі плитки, червоні кнопки.' },
 };
 function applyDesign(design) {
   const value = DESIGNS[design] ? design : 'dark';
   document.documentElement.dataset.design = value;
-  document.querySelector('meta[name=theme-color]')?.setAttribute('content', value === 'mono' ? '#5b5bd6' : '#0d0d0f');
+  document.querySelector('meta[name=theme-color]')?.setAttribute('content', { mono: '#ffffff', nova: '#ffffff' }[value] ?? '#0d0d0f');
   try {
     localStorage.setItem('design', value);
   } catch {
@@ -963,7 +964,7 @@ async function renderGroups(showArchive = false) {
       h('div', { class: 'card' },
         groups.length === 0
           ? h('p', { class: 'empty' }, 'В архіві порожньо. Групу, де всі розрахувалися, можна перенести сюди кнопкою «В архів» на її сторінці.')
-          : h('ul', { class: 'list' }, groups.map(groupItem)),
+          : h('ul', { class: 'list group-tiles' }, groups.map(groupItem)),
       ),
       groups.length > 0 && h('p', { class: 'sub hint' },
         'Архів бачите лише ви — в інших учасників група лишається як була. Якщо в групі знову з\'являться борги, вона сама повернеться до активних.'),
@@ -1005,7 +1006,7 @@ async function renderGroups(showArchive = false) {
     h('div', { class: 'card' },
       groups.length === 0
         ? h('p', { class: 'empty' }, archivedCount > 0 ? 'Активних груп немає. Створіть нову нижче.' : 'У вас ще немає груп. Створіть першу нижче.')
-        : h('ul', { class: 'list' }, groups.map(groupItem)),
+        : h('ul', { class: 'list group-tiles' }, groups.map(groupItem)),
     ),
     h('div', { class: 'card' }, h('h2', {}, 'Нова група'), form),
   );
