@@ -18,7 +18,7 @@ html[data-design="mono"] {
   --positive: #1a9e3f;
   --negative: #e5484d;
   --radius: 24px;
-  --band: linear-gradient(180deg, #5a4fd0 0%, #6272df 45%, #8fa2ea 75%, #f2f2f7 100%);
+  --band: linear-gradient(180deg, #5b50d6 0%, #6674e2 40%, #a4b2f0 72%, #f2f2f7 100%);
 }
 
 html[data-design="mono"] body {
@@ -26,11 +26,14 @@ html[data-design="mono"] body {
   background-attachment: scroll;
 }
 
-/* Шапка — у колір градієнта, білий текст */
-html[data-design="mono"] .topbar { background: rgb(90 79 208 / 0.86); }
-html[data-design="mono"] .brand,
-html[data-design="mono"] .topbar .me { color: #fff; }
-html[data-design="mono"] .topbar button.secondary { background: rgb(255 255 255 / 0.18); color: #fff; }
+/* Шапка — біла, як у monobusiness; градієнт починається під нею */
+html[data-design="mono"] .topbar {
+  background: #ffffff;
+  box-shadow: 0 1px 0 rgb(16 16 40 / 0.06);
+}
+html[data-design="mono"] .brand { color: var(--text); letter-spacing: -0.03em; }
+html[data-design="mono"] .topbar .me { color: var(--text); }
+html[data-design="mono"] .topbar button.secondary { background: #eceef4; color: var(--text); }
 
 /* Заголовок і «назад» стоять на градієнті */
 html[data-design="mono"] main > h1,
@@ -41,8 +44,10 @@ html[data-design="mono"] main > p:first-child a { color: rgb(255 255 255 / 0.85)
 /* Картки */
 html[data-design="mono"] .card { box-shadow: 0 1px 2px rgb(16 16 40 / 0.04), 0 8px 24px rgb(16 16 40 / 0.05); }
 html[data-design="mono"] a:hover { color: var(--accent-2); }
-html[data-design="mono"] input::placeholder { color: #a5a5ab; }
-html[data-design="mono"] .created { color: #a5a5ab; }
+html[data-design="mono"] input::placeholder,
+html[data-design="mono"] textarea::placeholder { color: #a5a5ab; }
+html[data-design="mono"] .created { color: #8a8a8e; }
+html[data-design="mono"] .sub { color: #7c7c83; }
 
 /* Кнопки: основна — чорна пігулка, другорядна — світло-сіра */
 html[data-design="mono"] button.secondary { background: #eceef4; color: var(--text); }
