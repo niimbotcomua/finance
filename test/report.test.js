@@ -42,3 +42,19 @@ test('звіт за період: лише витрати періоду, але
   assert.equal(people[0].paid, 0); // у вересні Анна не платила
   assert.equal(people[0].balance, -50); // але винна за весь час
 });
+
+test('PDF: A4, усі витрати з частками й валютою, підсумки', async () => {
+  const { buildPdfDoc } = await import('../public/report.js');
+  const doc = buildPdfDoc(buildReport(base));
+  assert.equal(doc.pageSize, 'A4');
+  const tables = doc.content.filter((c) => c.table).map((c) => c.table);
+  assert.equal(tables.every((t) => t.headerRows === 1), true); // шапка таблиць повторюється на нових сторінках
+  const expensesTable = tables.find((t) => t.body[0].some((cell) => cell.text === 'Частки'));
+  const texts = expensesTable.body.map((row) => row.map((cell) => cell.text));
+  assert.equal(texts.length, 1 + 2 + 1); // шапка, 2 витрати, «Разом»
+  assert.match(texts[1][2], /Кава\n#Кафе\nфото: 1/);
+  assert.equal(texts[1][5], 'Анна 50,00\nБогдан 50,00');
+  assert.match(texts[2][4], /300,00\n\(7,00 EUR\)/);
+  assert.deepEqual([texts[3][2], texts[3][4]], ['Разом', '400,00']);
+  assert.equal(doc.footer(2, 3).columns[1].text, 'Сторінка 2 з 3');
+});
