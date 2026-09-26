@@ -119,7 +119,7 @@ html[data-design="mono"] .icon-grid { background: #fff; box-shadow: 0 12px 32px 
 html[data-design="mono"] #toast { background: #0b0b0f; color: #fff; }
 
 /* Мініатюри в адмінці */
-.design-options { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.design-options { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
 .design-option {
   display: grid; gap: 4px; justify-items: start; text-align: left;
   padding: 12px; border-radius: 18px; background: var(--card-2); color: var(--text); font-weight: 400;
@@ -148,3 +148,4 @@ html[data-design="mono"] .segmented button.active { background: #0b0b0f; color: 
 html[data-design="mono"] .export-tile { background: #f2f2f7; }
 html[data-design="mono"] .export-arrow { background: #fff; }
 html[data-design="mono"] .receipt-toggle { background: #f2f2f7; }
+.design-preview { height: 56px; }
