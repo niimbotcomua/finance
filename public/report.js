@@ -198,3 +198,125 @@ export function writeWorkbook(ExcelJS, report) {
   }
   return wb;
 }
+
+// ---------- PDF (A4) через pdfmake ----------
+
+const pdfMoney = (value) => (value === null || value === undefined || value === ''
+  ? '' : Number(value).toLocaleString('uk-UA', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+const pdfDate = (value) => {
+  if (value instanceof Date) return value.toISOString().slice(0, 16).replace('T', ' ').replace(/^(\d{4})-(\d{2})-(\d{2})/, '$3.$2.$1');
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value.split('-').reverse().join('.') : String(value ?? '');
+};
+const cellText = (value, type) => {
+  if (value === null || value === undefined || value === '') return '';
+  if (type === 'money') return pdfMoney(value);
+  if (type === 'date') return pdfDate(value);
+  if (type === 'percent') return `${(Number(value) * 100).toLocaleString('uk-UA', { maximumFractionDigits: 1 })}%`;
+  if (type === 'rate') return Number(value).toLocaleString('uk-UA', { maximumFractionDigits: 4 });
+  if (value instanceof Date) return pdfDate(value);
+  return String(value);
+};
+
+/** Таблиця pdfmake з блоку звіту (шапка повторюється на кожній сторінці). */
+function pdfTable(columns, rows, { widths, totals } = {}) {
+  const right = (type) => ['money', 'money-text', 'number', 'percent', 'rate'].includes(type);
+  const body = [
+    columns.map((c) => ({ text: c.header, style: 'th', alignment: c.key === 'value' || right(c.type) ? 'right' : 'left' })),
+    ...rows.map((row) => columns.map((c) => ({
+      text: cellText(row[c.key], row.type && c.key === 'value' ? row.type : c.type),
+      alignment: c.key === 'value' || right(c.type) ? 'right' : 'left', // у «Показник — Значення» значення праворуч
+    }))),
+  ];
+  if (totals) body.push(columns.map((c) => ({ text: cellText(totals[c.key], c.type), bold: true, alignment: right(c.type) ? 'right' : 'left' })));
+  return {
+    table: { headerRows: 1, widths: widths ?? columns.map(() => '*'), body, dontBreakRows: true },
+    layout: {
+      hLineWidth: (i, node) => (i === 0 || i === 1 || i === node.table.body.length ? 0.8 : 0.3),
+      vLineWidth: () => 0,
+      hLineColor: (i) => (i <= 1 ? '#1b1b1f' : '#d9d9de'),
+      fillColor: (i) => (i === 0 ? '#f1f1f4' : null),
+      paddingTop: () => 4,
+      paddingBottom: () => 4,
+    },
+    style: 'table',
+  };
+}
+
+/** Опис документа pdfmake: A4, книжкова орієнтація. */
+export function buildPdfDoc(report) {
+  const sheet = (name) => report.sheets.find((s) => s.name === name);
+  const [info, people, debts] = sheet('Підсумок').blocks;
+  const expenses = sheet('Витрати').blocks[0];
+  const settlements = sheet('Повернення боргів').blocks[0];
+  const tags = sheet('По тегах').blocks[0];
+
+  // Частки учасників — одним стовпчиком «Анна 50,00 · Богдан 50,00», щоб таблиця вмістилась на A4.
+  const shareColumns = expenses.columns.filter((c) => c.key.startsWith('share_'));
+  const expenseRows = expenses.rows.map((row) => ({
+    ...row,
+    amountText: row.currency && row.original !== row.amount && row.rate !== 1
+      ? `${pdfMoney(row.amount)}\n(${pdfMoney(row.original)} ${row.currency})` : pdfMoney(row.amount),
+    shares: shareColumns
+      .filter((c) => row[c.key] !== null && row[c.key] !== undefined)
+      .map((c) => `${c.header.replace(/^Частка: /, '')} ${pdfMoney(row[c.key])}`).join('\n'),
+    what: [row.description, row.tag ? `#${row.tag}` : '', row.photos ? `фото: ${row.photos}` : ''].filter(Boolean).join('\n'),
+  }));
+  const amountHeader = expenses.columns.find((c) => c.key === 'amount').header;
+
+  const section = (text) => ({ text, style: 'h2' });
+  return {
+    pageSize: 'A4',
+    pageOrientation: 'portrait',
+    pageMargins: [36, 48, 36, 48],
+    info: { title: info.title, creator: 'Спільні витрати' },
+    defaultStyle: { font: 'Roboto', fontSize: 9, color: '#1b1b1f' },
+    styles: {
+      h1: { fontSize: 18, bold: true, margin: [0, 0, 0, 4] },
+      sub: { fontSize: 9, color: '#6b6b73' },
+      h2: { fontSize: 12, bold: true, margin: [0, 16, 0, 6] },
+      th: { bold: true, fontSize: 8.5 },
+      table: { margin: [0, 0, 0, 4] },
+    },
+    header: (page, pages) => (page > 1
+      ? { text: info.title, style: 'sub', margin: [36, 20, 36, 0] } : null),
+    footer: (page, pages) => ({
+      columns: [
+        { text: 'Спільні витрати', style: 'sub' },
+        { text: `Сторінка ${page} з ${pages}`, style: 'sub', alignment: 'right' },
+      ],
+      margin: [36, 16, 36, 0],
+    }),
+    content: [
+      { text: info.title, style: 'h1' },
+      { text: info.rows.filter((r) => ['Період', 'Сформовано'].includes(r.label)).map((r) => `${r.label}: ${cellText(r.value, r.type)}`).join('   ·   '), style: 'sub' },
+      section('Підсумок'),
+      pdfTable(info.columns, info.rows.filter((r) => !['Група', 'Період', 'Сформовано'].includes(r.label)), { widths: [200, '*'] }),
+      section(people.title),
+      pdfTable(people.columns, people.rows, { widths: ['*', '*', 62, 62, 62, 56] }),
+      section(debts.title),
+      pdfTable(debts.columns, debts.rows, { widths: ['*', '*', 80] }),
+      section(`Витрати (${expenses.rows.length})`),
+      expenses.rows.length === 0
+        ? { text: 'За цей період витрат немає.', style: 'sub' }
+        : pdfTable([
+          { header: '№', key: 'n', type: 'number' },
+          { header: 'Дата', key: 'date', type: 'date' },
+          { header: 'Опис', key: 'what', type: 'text' },
+          { header: 'Хто платив', key: 'payer', type: 'text' },
+          { header: amountHeader, key: 'amountText', type: 'money-text' },
+          { header: 'Частки', key: 'shares', type: 'text' },
+        ], expenseRows, {
+          widths: [16, 46, '*', 62, 70, 110],
+          totals: { what: 'Разом', amountText: pdfMoney(expenses.totals.amount) },
+        }),
+      section(`Повернення боргів (${settlements.rows.length})`),
+      settlements.rows.length === 0
+        ? { text: 'Повернень за цей період немає.', style: 'sub' }
+        : pdfTable(settlements.columns, settlements.rows, { widths: [60, '*', '*', 80] }),
+      section('По тегах'),
+      tags.rows.length === 0
+        ? { text: 'Витрат немає.', style: 'sub' }
+        : pdfTable(tags.columns, tags.rows, { widths: ['*', 50, 80, 50] }),
+    ],
+  };
+}

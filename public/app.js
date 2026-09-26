@@ -3,7 +3,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 import { computeBalances, convertAmount, convertShares, remainderShare, simplifyDebts, splitEqually } from './balances.js';
 import { filterByPeriod, summarize } from './analytics.js';
-import { REPORT_PERIODS, buildReport, writeWorkbook } from './report.js';
+import { REPORT_PERIODS, buildPdfDoc, buildReport, writeWorkbook } from './report.js';
 
 const configured = SUPABASE_URL.startsWith('https://') && !SUPABASE_ANON_KEY.includes('ВСТАВТЕ');
 const supabase = configured ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
@@ -1135,7 +1135,7 @@ async function renderGroup(groupId) {
     rates: { label: '💱 Курси валют', count: rates.size, muted: true, render: () => ratesCard(group, rateRows, reload) },
     analytics: { label: '📊 Аналітика', render: () => analyticsCard(expenses, members, categoryOf) },
     history: { label: '🕘 Історія змін', render: () => historyCard(history, nameOf, categoryOf) },
-    report: { label: '📄 Звіт (Excel)', render: () => reportCard(group, members, expenses, settlements, categoryOf) },
+    report: { label: '📄 Звіт (Excel, PDF)', render: () => reportCard(group, members, expenses, settlements, categoryOf) },
   };
   const menu = groupMenu(panelDefs, (key) => {
     groupUi.panel = groupUi.panel === key ? null : key;
@@ -1211,46 +1211,87 @@ function loadExcelJS() {
   return excelLoading;
 }
 
+const PDFMAKE_URLS = [
+  'https://cdn.jsdelivr.net/npm/pdfmake@0.2.20/build/pdfmake.min.js',
+  'https://cdn.jsdelivr.net/npm/pdfmake@0.2.20/build/vfs_fonts.js', // шрифт Roboto з кирилицею
+];
+let pdfLoading = null;
+
+/** pdfmake (~2 МБ разом зі шрифтом) — лише тоді, коли PDF вперше потрібен. */
+function loadPdfMake() {
+  const loadScript = (src) => new Promise((resolve, reject) => {
+    const script = h('script', { src });
+    script.onload = resolve;
+    script.onerror = () => reject(new Error('Не вдалося завантажити модуль PDF. Перевірте інтернет.'));
+    document.head.append(script);
+  });
+  pdfLoading ??= loadScript(PDFMAKE_URLS[0]).then(() => loadScript(PDFMAKE_URLS[1])).then(() => window.pdfMake)
+    .catch((err) => {
+      pdfLoading = null;
+      throw err;
+    });
+  return pdfLoading;
+}
+
+function saveBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = h('a', { href: url, download: filename });
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+
 function reportCard(group, members, expenses, settlements, categoryOf) {
   const period = h('select', { 'aria-label': 'Період звіту' },
     Object.entries(REPORT_PERIODS).map(([value, label]) => h('option', { value }, label)));
   const status = h('p', { class: 'sub' });
-  const button = h('button', {
-    type: 'button',
-    onClick: async () => {
-      button.disabled = true;
-      status.textContent = 'Готую звіт…';
-      try {
-        const ExcelJS = await loadExcelJS();
-        const now = new Date();
-        const report = buildReport({
-          group, members, settlements, categoryOf,
-          expenses: expenses.map((e) => ({ ...e, photoCount: e.photoPaths.filter(Boolean).length })),
-          period: period.value,
-          todayIso: today(),
-          generatedAt: new Date(now.getTime() - now.getTimezoneOffset() * 60000), // місцевий час у клітинці
-          currencyName: currencyInfo(group.currency).name,
-        });
-        const buffer = await writeWorkbook(ExcelJS, report).xlsx.writeBuffer();
-        const url = URL.createObjectURL(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
-        const safeName = group.name.replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'група';
-        const link = h('a', { href: url, download: `Звіт — ${safeName} — ${today()}.xlsx` });
-        document.body.append(link);
-        link.click();
-        link.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 10000);
-        status.textContent = 'Готово — файл завантажено.';
-      } catch (err) {
-        status.textContent = err.message;
-      } finally {
-        button.disabled = false;
-      }
-    },
-  }, '⬇ Завантажити звіт (.xlsx)');
+  const safeName = group.name.replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'група';
+  const makeReport = () => {
+    const now = new Date();
+    return buildReport({
+      group, members, settlements, categoryOf,
+      expenses: expenses.map((e) => ({ ...e, photoCount: e.photoPaths.filter(Boolean).length })),
+      period: period.value,
+      todayIso: today(),
+      generatedAt: new Date(now.getTime() - now.getTimezoneOffset() * 60000), // місцевий час у звіті
+      currencyName: currencyInfo(group.currency).name,
+    });
+  };
+  const exportButton = (label, action) => {
+    const button = h('button', {
+      type: 'button',
+      onClick: async () => {
+        button.disabled = true;
+        status.textContent = 'Готую звіт…';
+        try {
+          await action();
+          status.textContent = 'Готово — файл завантажено.';
+        } catch (err) {
+          status.textContent = err.message;
+        } finally {
+          button.disabled = false;
+        }
+      },
+    }, label);
+    return button;
+  };
+  const excelButton = exportButton('⬇ Excel', async () => {
+    const ExcelJS = await loadExcelJS();
+    const buffer = await writeWorkbook(ExcelJS, makeReport()).xlsx.writeBuffer();
+    saveBlob(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+      `Звіт — ${safeName} — ${today()}.xlsx`);
+  });
+  const pdfButton = exportButton('⬇ PDF A4', async () => {
+    const pdfMake = await loadPdfMake();
+    const blob = await new Promise((resolve) => pdfMake.createPdf(buildPdfDoc(makeReport())).getBlob(resolve));
+    saveBlob(blob, `Звіт — ${safeName} — ${today()}.pdf`);
+  });
+  const button = h('div', { class: 'btn-row report-buttons' }, excelButton, pdfButton);
 
   return h('div', { class: 'card' },
     h('h2', {}, 'Звіт по групі'),
-    h('p', { class: 'sub' }, 'Файл Excel з чотирма аркушами: «Підсумок» (суми, хто скільки заплатив, баланси й хто кому винен), '
+    h('p', { class: 'sub' }, 'PDF — те саме на аркушах A4: зручно надіслати чи роздрукувати. Excel — чотири аркуші: «Підсумок» (суми, хто скільки заплатив, баланси й хто кому винен), '
       + '«Витрати» (кожна витрата: дата, опис, тег, хто платив, сума, валюта й курс, частка кожного учасника), '
       + '«Повернення боргів» і «По тегах».'),
     h('label', {}, 'Період', period),
