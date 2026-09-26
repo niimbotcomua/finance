@@ -51,3 +51,17 @@ test('simplifyDebts мінімізує перекази та зводить ба
   }
   assert.ok([...net.values()].every((v) => v === 0));
 });
+
+test('перерахунок валюти: частки в сумі дають перераховану суму', async () => {
+  const { convertAmount, convertShares } = await import('../public/balances.js');
+  assert.equal(convertAmount(1000, 4.25), 4250);
+  assert.equal(convertAmount(333, 41.1234), 13694);
+  const shares = [{ userId: 'a', amount: 333 }, { userId: 'b', amount: 333 }, { userId: 'c', amount: 334 }];
+  const total = convertAmount(1000, 41.1234);
+  const converted = convertShares(shares, 41.1234, total);
+  assert.equal(converted.reduce((s, x) => s + x.amount, 0), total);
+  assert.ok(converted.every((x, i) => Math.abs(x.amount - shares[i].amount * 41.1234) < 1));
+  // Назад (основна → валюта витрати) — теж точно в суму.
+  const back = convertShares(converted, 1 / 41.1234, 1000);
+  assert.deepEqual(back.map((x) => x.amount), [333, 333, 334]);
+});

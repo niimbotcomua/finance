@@ -74,3 +74,24 @@ export function simplifyDebts(balances) {
   return transfers;
 }
 
+
+/** Сума в іншій валюті → основна валюта за курсом (обидві — у сотих частках). */
+export const convertAmount = (original, rate) => Math.round(original * rate);
+
+/**
+ * Перераховує частки [{ userId, amount }] за курсом так, щоб їх сума точно дорівнювала total.
+ * Копійки від округлення отримують ті, в кого найбільша відкинута дробова частина.
+ */
+export function convertShares(shares, rate, total) {
+  const exact = shares.map((s) => s.amount * rate);
+  const result = shares.map((s, i) => ({ userId: s.userId, amount: Math.floor(exact[i]) }));
+  let rest = total - result.reduce((sum, s) => sum + s.amount, 0);
+  const order = exact.map((x, i) => [x - Math.floor(x), i]).sort((a, b) => b[0] - a[0]).map(([, i]) => i);
+  for (let k = 0; rest !== 0 && order.length > 0; k = (k + 1) % order.length) {
+    const i = order[k];
+    if (rest < 0 && result[i].amount === 0) continue;
+    result[i].amount += Math.sign(rest);
+    rest -= Math.sign(rest);
+  }
+  return result;
+}
