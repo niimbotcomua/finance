@@ -631,7 +631,8 @@ details.expense[open] {
 details.expense[open] > summary .expense-title { color: var(--accent); }
 
 /* Список груп — окремі плитки (у всіх дизайнах); натискається вся плитка */
-.card:has(> ul.group-tiles) { background: none; padding: 0; box-shadow: none; }
+.card:has(> ul.group-tiles), .card:has(> .group-results) { background: none; padding: 0; box-shadow: none; }
+.group-results > .filter-bar { margin-bottom: 14px; }
 ul.group-tiles { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
 ul.list.group-tiles li.group-tile {
   position: relative; display: grid; gap: 10px; align-items: stretch;
@@ -662,3 +663,34 @@ ul.list.group-tiles li.group-tile:active { transform: scale(0.99); }
 /* Нова група: поле, валюта й кнопка — кожне на всю ширину */
 .create-group button { width: 100%; }
 .create-group + .sub { font-size: 12px; margin: 2px 2px 0; }
+
+/* Пошук і фільтри (групи, витрати) */
+.filter-bar { display: grid; gap: 10px; margin-bottom: 12px; }
+.filter-row { display: flex; gap: 8px; align-items: stretch; }
+.filter-search-wrap { position: relative; flex: 1; min-width: 0; }
+.filter-search-wrap::before {
+  content: ''; position: absolute; left: 14px; top: 50%; width: 16px; height: 16px; transform: translateY(-50%);
+  background: var(--muted); pointer-events: none;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='M20 20l-4-4'/%3E%3C/svg%3E") center / contain no-repeat;
+          mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='M20 20l-4-4'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.filter-search { width: 100%; padding-left: 40px; }
+.filter-toggle { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; padding: 10px 16px; font-size: 14px; }
+.filter-toggle.has-active, .filter-toggle.open { box-shadow: inset 0 0 0 1.5px var(--accent); }
+.filter-count:empty { display: none; }
+.filter-count {
+  min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; display: inline-grid; place-items: center;
+  background: var(--accent); color: #fff; font-size: 12px; font-weight: 700;
+}
+.filter-panel { display: grid; gap: 12px; padding: 14px; border-radius: 16px; background: var(--card-2); }
+.filter-panel .segmented button { background: var(--card); }
+.filter-panel .segmented button.active { background: var(--text); color: var(--card); }
+.filter-panel select, .filter-panel input[type=date] { background: var(--card); }
+.filter-dates > label, .filter-selects > label { flex: 1 1 140px; }
+.filter-switch { display: flex; align-items: center; gap: 10px; color: var(--text); font-size: 14px; cursor: pointer; }
+.filter-reset { justify-self: start; font-size: 13px; color: var(--accent) !important; padding: 0 !important; }
+.filter-empty { padding: 18px 4px; color: var(--muted); text-align: center; }
+.group-results { display: grid; gap: 0; }
+
+/* Підсумок під списком: довгий підпис переноситься, а не налазить на суми */
+.expense-total > span:first-child { white-space: normal; font-size: 14px; line-height: 1.3; }
