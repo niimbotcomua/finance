@@ -448,3 +448,23 @@ test('до витрати можна прикріпити 2 фото', async () 
   assert.deepEqual([row.receipt_path, row.receipt_path2], [`${gid}/a.jpg`, `${gid}/b.jpg`]);
   assert.equal((await setPhoto('bohdan', 2, null))[0].old, `${gid}/b.jpg`);
 });
+
+test('брендинг і SEO: змінює лише адмін, читати можуть усі', async () => {
+  await db.query('insert into private.admins (user_id) values ($1) on conflict do nothing', [users.anna]);
+  const meta = async (who) => (await as(who, 'select * from public.site_meta()'))[0];
+  assert.match((await meta(null)).site_title, /Спільні витрати/);
+  const setBranding = (who, title, logo) => as(who,
+    'select * from public.admin_set_branding(site_title => $1, site_description => $2, logo_path => $3, og_image_path => $4)',
+    [title, 'Опис', logo, null]);
+  await rejects(setBranding('bohdan', 'X', null), 'адміністратора');
+  await rejects(setBranding('anna', '  ', null), 'Назва сайту');
+  assert.equal((await setBranding('anna', 'Мій сайт', 'logo-1.png'))[0].old_logo_path, null);
+  assert.equal((await setBranding('anna', 'Мій сайт', 'logo-2.png'))[0].old_logo_path, 'logo-1.png');
+  assert.equal((await meta(null)).logo_path, 'logo-2.png');
+  await rejects(setBranding('anna', 'Мій сайт', '../x.png'), 'app_settings_site_check');
+
+  // Файли в сховище branding завантажує лише адмін.
+  const upload = (who, name) => as(who, "insert into storage.objects (bucket_id, name) values ('branding', $1)", [name]);
+  await upload('anna', 'logo-3.png');
+  await rejects(upload('bohdan', 'evil.png'), 'row-level security');
+});

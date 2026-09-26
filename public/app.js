@@ -202,6 +202,31 @@ function submitHandler(form, errorEl, action) {
 
 // ---------- Шапка ----------
 
+/** Назва, опис, логотип сайту (налаштовує адмін). Доступно й до входу. */
+let siteMeta = null;
+const brandingUrl = (path) => supabase.storage.from('branding').getPublicUrl(path).data.publicUrl;
+
+function renderBrand() {
+  const brand = document.querySelector('.topbar .brand');
+  if (!brand) return;
+  if (siteMeta?.logo_path) {
+    brand.replaceChildren(h('img', { class: 'brand-logo', src: brandingUrl(siteMeta.logo_path), alt: siteMeta.site_title ?? 'Логотип' }));
+  } else {
+    brand.replaceChildren('💸 Спільні витрати');
+  }
+}
+
+async function loadSiteMeta() {
+  try {
+    const rows = await run(supabase.rpc('site_meta'));
+    siteMeta = Array.isArray(rows) ? rows[0] ?? null : rows;
+  } catch {
+    siteMeta = null;
+  }
+  if (siteMeta?.design) applyDesign(siteMeta.design);
+  renderBrand();
+}
+
 function renderUserbox() {
   userbox.replaceChildren();
   if (!currentUser) return;
@@ -266,6 +291,34 @@ async function squareJpeg(file, size = 256) {
   );
   return new Promise((resolve, reject) =>
     canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('Не вдалося обробити фото'))), 'image/jpeg', 0.85));
+}
+
+/**
+ * Вписує картинку в рамку width×height. fit = 'contain' — ціла картинка на прозорому тлі (логотип, PNG),
+ * 'cover' — заповнює рамку з обрізанням країв (прев'ю для соцмереж, JPEG).
+ */
+async function framedImage(file, width, height, fit) {
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    throw new Error('Не вдалося відкрити картинку. Спробуйте файл PNG або JPG.');
+  }
+  const scale = fit === 'cover'
+    ? Math.max(width / bitmap.width, height / bitmap.height)
+    : Math.min(width / bitmap.width, height / bitmap.height);
+  const w = bitmap.width * scale;
+  const h2 = bitmap.height * scale;
+  const canvas = h('canvas', { width, height });
+  const ctx = canvas.getContext('2d');
+  if (fit === 'cover') {
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, width, height);
+  }
+  ctx.drawImage(bitmap, (width - w) / 2, (height - h2) / 2, w, h2);
+  const type = fit === 'cover' ? 'image/jpeg' : 'image/png';
+  return new Promise((resolve, reject) =>
+    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('Не вдалося обробити картинку'))), type, 0.9));
 }
 
 /** Зменшує фото так, щоб довша сторона була не більше maxSide, і стискає в JPEG. */
@@ -579,6 +632,8 @@ async function renderAdmin() {
     toast('Валюту за замовчуванням збережено');
   }));
 
+  const brandingCard = brandingSettingsCard(await run(supabase.rpc('site_meta')).then((r) => (Array.isArray(r) ? r[0] : r)));
+
   // Перемикач версії дизайну — одразу для всіх користувачів.
   const designOptions = h('div', { class: 'design-options' });
   const renderDesignOptions = () => designOptions.replaceChildren(...Object.entries(DESIGNS).map(([key, d]) =>
@@ -606,6 +661,7 @@ async function renderAdmin() {
   mount(
     h('p', {}, h('a', { href: '#/' }, '← Усі групи')),
     h('h1', {}, 'Адмінка'),
+    brandingCard,
     h('div', { class: 'card' },
       h('h2', {}, 'Дизайн'),
       h('p', { class: 'sub' }, 'Змінюється одразу для всіх користувачів.'),
@@ -628,6 +684,128 @@ async function renderAdmin() {
       h('ul', { class: 'list' }, users.map(userRow)),
     ),
   );
+}
+
+/** Адмінка: логотип (2:1), назва й опис сайту, картинка-прев'ю для соцмереж. */
+function brandingSettingsCard(meta) {
+  const state = {
+    logo: { path: meta?.logo_path ?? null, file: null },
+    og: { path: meta?.og_image_path ?? null, file: null },
+  };
+  const previews = new Map();
+  const urlOf = (item, fallback) => {
+    if (item.file) {
+      if (!previews.has(item.file)) previews.set(item.file, URL.createObjectURL(item.file));
+      return previews.get(item.file);
+    }
+    return item.path ? brandingUrl(item.path) : fallback;
+  };
+
+  const titleInput = h('input', { name: 'title', value: meta?.site_title ?? '', maxLength: 120, required: true });
+  const descInput = h('textarea', { name: 'description', maxLength: 300, rows: 3, required: true });
+  descInput.value = meta?.site_description ?? '';
+  const logoBox = h('div', { class: 'logo-preview' });
+  const socialCard = h('div', { class: 'social-card' });
+  const error = h('div', { class: 'error' });
+
+  const pickImage = (onFile) => {
+    const input = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp', hidden: true });
+    input.addEventListener('change', () => {
+      const file = input.files[0];
+      input.remove();
+      if (file) onFile(file);
+    });
+    document.body.append(input);
+    input.click();
+  };
+
+  function render() {
+    const logoUrl = urlOf(state.logo, null);
+    logoBox.replaceChildren(
+      h('div', { class: 'logo-frames' },
+        ['dark', 'light'].map((tone) => h('div', { class: `logo-frame ${tone}` },
+          logoUrl ? h('img', { src: logoUrl, alt: 'Логотип' }) : h('span', {}, '💸 Спільні витрати')))),
+      h('div', { class: 'btn-row' },
+        h('button', {
+          type: 'button', class: 'secondary',
+          onClick: () => pickImage(async (file) => {
+            try {
+              state.logo.file = await framedImage(file, 800, 400, 'contain');
+              render();
+            } catch (err) { toast(err.message); }
+          }),
+        }, logoUrl ? '🖼 Інший логотип' : '🖼 Завантажити логотип'),
+        logoUrl && h('button', {
+          type: 'button', class: 'secondary',
+          onClick: () => { state.logo = { path: null, file: null }; render(); },
+        }, '✕ Прибрати'),
+      ),
+    );
+    const ogUrl = urlOf(state.og, '/og.png');
+    socialCard.replaceChildren(
+      h('img', { src: ogUrl, alt: '' }),
+      h('div', { class: 'social-text' },
+        h('div', { class: 'social-host' }, location.host),
+        h('div', { class: 'social-title' }, titleInput.value || '—'),
+        h('div', { class: 'social-desc' }, descInput.value || '—'),
+      ),
+    );
+  }
+  titleInput.addEventListener('input', render);
+  descInput.addEventListener('input', render);
+
+  const form = h('form', {},
+    h('h3', {}, 'Логотип'),
+    h('p', { class: 'sub' }, 'Показується зліва вгорі замість назви. Пропорція 2:1 (наприклад, 800×400) — інші картинки впишемо в цю рамку. Найкраще — PNG з прозорим тлом.'),
+    logoBox,
+    h('h3', {}, 'Прев\'ю для соцмереж і пошуку'),
+    h('p', { class: 'sub' }, 'Так виглядатиме посилання на сайт у Telegram, Viber, Facebook. Оновлюється в прев\'ю протягом кількох хвилин (месенджери можуть ще й кешувати старе).'),
+    h('label', {}, 'Назва сайту (до 120 символів)', titleInput),
+    h('label', {}, 'Опис (до 300 символів)', descInput),
+    socialCard,
+    h('div', { class: 'btn-row' },
+      h('button', {
+        type: 'button', class: 'secondary',
+        onClick: () => pickImage(async (file) => {
+          try {
+            state.og.file = await framedImage(file, 1200, 630, 'cover');
+            render();
+          } catch (err) { toast(err.message); }
+        }),
+      }, '🖼 Своя картинка-прев\'ю (1200×630)'),
+      h('button', {
+        type: 'button', class: 'secondary',
+        onClick: () => { state.og = { path: null, file: null }; render(); },
+      }, 'Типова картинка'),
+    ),
+    error,
+    h('button', { type: 'submit' }, 'Зберегти брендинг'),
+  );
+
+  const upload = async (item, prefix) => {
+    if (!item.file) return item.path;
+    const ext = item.file.type === 'image/png' ? 'png' : 'jpg';
+    const path = `${prefix}-${Date.now()}.${ext}`;
+    await run(supabase.storage.from('branding').upload(path, item.file, { contentType: item.file.type }));
+    return path;
+  };
+  form.addEventListener('submit', submitHandler(form, error, async () => {
+    const logoPath = await upload(state.logo, 'logo');
+    const ogPath = await upload(state.og, 'og');
+    const [old] = await run(supabase.rpc('admin_set_branding', {
+      site_title: titleInput.value, site_description: descInput.value, logo_path: logoPath, og_image_path: ogPath,
+    }));
+    const stale = [old?.old_logo_path, old?.old_og_image_path].filter(Boolean);
+    if (stale.length > 0) await supabase.storage.from('branding').remove(stale);
+    state.logo = { path: logoPath, file: null };
+    state.og = { path: ogPath, file: null };
+    await loadSiteMeta();
+    render();
+    toast('Брендинг збережено');
+  }));
+  render();
+
+  return h('div', { class: 'card' }, h('h2', {}, 'Брендинг і SEO'), form);
 }
 
 // ---------- Вхід / реєстрація ----------
@@ -2182,6 +2360,7 @@ async function start() {
     );
     return;
   }
+  loadSiteMeta(); // логотип і дизайн — паралельно з рештою
   // Після переходу за посиланням з листа Supabase повертає токен у #…; getSession() його обробляє.
   await supabase.auth.getSession();
   if (/access_token|error_description/.test(location.hash)) {
