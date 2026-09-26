@@ -3,7 +3,6 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 import { computeBalances, convertAmount, convertShares, remainderShare, simplifyDebts, splitEqually } from './balances.js';
 import { filterByPeriod, summarize } from './analytics.js';
-import { parseReceipt } from './receipt.js';
 
 const configured = SUPABASE_URL.startsWith('https://') && !SUPABASE_ANON_KEY.includes('ВСТАВТЕ');
 const supabase = configured ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
@@ -336,40 +335,42 @@ async function scaledJpeg(file, maxSide = 1600) {
     canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('Не вдалося обробити фото'))), 'image/jpeg', 0.85));
 }
 
-// ---------- Розпізнавання квитанцій (Tesseract.js, прямо в браузері, безкоштовно) ----------
+// ---------- Карусель фото ----------
 
-const TESSERACT_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@6.0.1/dist/tesseract.min.js';
-let tesseractLoading = null;
+/**
+ * Фото на всю ширину; якщо їх кілька — гортаються свайпом (або стрілками на комп'ютері), внизу крапки.
+ * slides: [{ src, onRemove? }] — onRemove додає на фото кнопку ✕.
+ */
+function photoCarousel(slides) {
+  const track = h('div', { class: 'carousel-track' },
+    slides.map((slide, i) => h('div', { class: 'carousel-slide' },
+      h('a', { href: slide.src, target: '_blank', rel: 'noopener', title: 'Відкрити повністю' },
+        h('img', { src: slide.src, alt: `Фото ${i + 1}`, loading: 'lazy' })),
+      slide.onRemove && h('button', {
+        type: 'button', class: 'photo-remove', title: 'Прибрати фото', 'aria-label': 'Прибрати фото', onClick: slide.onRemove,
+      }, '✕'))));
+  if (slides.length < 2) return h('div', { class: 'carousel' }, track);
 
-/** Підвантажує бібліотеку розпізнавання лише тоді, коли вона вперше знадобилась. */
-function loadTesseract() {
-  tesseractLoading ??= new Promise((resolve, reject) => {
-    const script = h('script', { src: TESSERACT_URL });
-    script.onload = () => resolve(window.Tesseract);
-    script.onerror = () => {
-      tesseractLoading = null;
-      reject(new Error('Не вдалося завантажити розпізнавання. Перевірте інтернет.'));
-    };
-    document.head.append(script);
-  });
-  return tesseractLoading;
-}
-
-/** Фото (Blob або URL) → текст квитанції. onProgress отримує рядок стану для показу. */
-async function recognizeText(image, onProgress) {
-  onProgress('Завантажую розпізнавання… (перший раз — кілька секунд)');
-  const Tesseract = await loadTesseract();
-  const worker = await Tesseract.createWorker(['ukr', 'eng'], 1, {
-    logger: (m) => {
-      if (m.status === 'recognizing text') onProgress(`Розпізнаю текст… ${Math.round(m.progress * 100)}%`);
-    },
-  });
-  try {
-    const { data } = await worker.recognize(image);
-    return data.text;
-  } finally {
-    await worker.terminate();
-  }
+  const dots = slides.map((_, i) => h('button', {
+    type: 'button', class: 'carousel-dot', 'aria-label': `Фото ${i + 1}`, onClick: () => go(i),
+  }));
+  const counter = h('span', { class: 'carousel-counter' });
+  const go = (i) => track.scrollTo({ left: i * track.clientWidth, behavior: 'smooth' });
+  const current = () => Math.round(track.scrollLeft / Math.max(1, track.clientWidth));
+  const update = () => {
+    const i = current();
+    dots.forEach((dot, k) => dot.classList.toggle('active', k === i));
+    counter.textContent = `${i + 1} / ${slides.length}`;
+  };
+  track.addEventListener('scroll', update, { passive: true });
+  update();
+  return h('div', { class: 'carousel' },
+    track,
+    counter,
+    h('button', { type: 'button', class: 'carousel-arrow prev', 'aria-label': 'Попереднє фото', onClick: () => go(Math.max(0, current() - 1)) }, '‹'),
+    h('button', { type: 'button', class: 'carousel-arrow next', 'aria-label': 'Наступне фото', onClick: () => go(Math.min(slides.length - 1, current() + 1)) }, '›'),
+    h('div', { class: 'carousel-dots' }, dots),
+  );
 }
 
 async function setAvatar(file) {
@@ -1816,11 +1817,11 @@ async function renderJoin(token) {
 const MAX_PHOTOS = 2;
 
 /**
- * Блок «Фото» у формі витрати: до двох фото (чек, товар…) — сфотографувати / вибрати, переглянути,
- * розпізнати суми з чека. existingUrls — посилання на вже прикріплені фото [фото 1, фото 2].
+ * Блок «Фото» у формі витрати: до двох фото (чек, товар…) — сфотографувати чи вибрати й переглянути.
+ * existingUrls — посилання на вже прикріплені фото [фото 1, фото 2].
  * Повертає елемент і стан слотів: [{ url, file, removed }] — нове фото чи прибране наявне.
  */
-function receiptField(existingUrls, amountInput, descriptionInput) {
+function receiptField(existingUrls) {
   const slots = Array.from({ length: MAX_PHOTOS }, (_, i) => ({ url: existingUrls[i] ?? null, file: null, removed: false }));
   const previews = new Map();
   const hasPhoto = (slot) => Boolean(slot.file || (slot.url && !slot.removed));
@@ -1843,7 +1844,6 @@ function receiptField(existingUrls, amountInput, descriptionInput) {
     input.click();
   };
 
-  const results = h('div', { class: 'receipt-results' });
   const box = h('div', { class: 'receipt' });
 
   function imageOf(slot) {
@@ -1851,92 +1851,25 @@ function receiptField(existingUrls, amountInput, descriptionInput) {
       if (!previews.has(slot.file)) previews.set(slot.file, URL.createObjectURL(slot.file));
       return previews.get(slot.file);
     }
-    return slot.removed ? null : slot.url;
-  }
-
-  async function recognize(slot, button) {
-    button.disabled = true;
-    const status = h('p', { class: 'sub' });
-    results.replaceChildren(status);
-    try {
-      const image = slot.file ? await scaledJpeg(slot.file, 2000) : slot.url;
-      const text = await recognizeText(image, (msg) => { status.textContent = msg; });
-      showItems(parseReceipt(text));
-    } catch (err) {
-      results.replaceChildren(h('p', { class: 'error' }, err.message));
-    } finally {
-      button.disabled = false;
-    }
-  }
-
-  function showItems({ items, total }) {
-    if (items.length === 0) {
-      results.replaceChildren(h('p', { class: 'sub' },
-        total ? `Позицій не знайшов, але підсумок чека — ${formatMoney(total)}. ` : 'Не вдалося знайти позиції з сумами. ',
-        'Спробуйте сфотографувати рівніше, ближче й при кращому світлі.'),
-      total ? h('button', { type: 'button', class: 'secondary', onClick: () => fill(total, '') }, `Підставити ${formatMoney(total)}`) : '');
-      return;
-    }
-    const checks = items.map(() => h('input', { type: 'checkbox', checked: true }));
-    const sumLabel = h('span', { class: 'amount' });
-    const fillButton = h('button', { type: 'button' });
-    const selected = () => items.filter((_, i) => checks[i].checked);
-    const update = () => {
-      const sum = selected().reduce((acc, it) => acc + it.amount, 0);
-      sumLabel.textContent = formatMoney(sum);
-      fillButton.textContent = `Підставити у форму (${formatMoney(sum)})`;
-      fillButton.disabled = sum === 0;
-    };
-    checks.forEach((c) => c.addEventListener('change', update));
-    fillButton.addEventListener('click', () => {
-      const chosen = selected();
-      fill(chosen.reduce((acc, it) => acc + it.amount, 0),
-        chosen.length <= 3 ? chosen.map((it) => it.name).join(', ') : `${chosen.slice(0, 2).map((it) => it.name).join(', ')} та ще ${chosen.length - 2}`);
-    });
-    results.replaceChildren(
-      h('p', { class: 'sub' }, 'Знайдені позиції — зніміть галочки з тих, що не входять у спільну витрату. Перевірте суми: розпізнавання може помилятися.'),
-      h('ul', { class: 'receipt-items' }, items.map((it, i) =>
-        h('li', {}, h('label', {}, checks[i], h('span', {}, it.name)), h('span', { class: 'amount' }, formatMoney(it.amount))))),
-      h('div', { class: 'receipt-sum' },
-        h('span', {}, 'Вибрано'), sumLabel),
-      total !== items.reduce((acc, it) => acc + it.amount, 0) ? h('p', { class: 'sub' }, `Підсумок у чеку: ${formatMoney(total)}`) : '',
-      fillButton,
-    );
-    update();
-  }
-
-  function fill(amount, description) {
-    amountInput.value = formatInput(amount);
-    amountInput.dispatchEvent(new Event('input'));
-    if (description && !descriptionInput.value.trim()) descriptionInput.value = description.slice(0, 200);
-    toast('Суму підставлено — перевірте форму');
+    return slot.url;
   }
 
   function render() {
-    results.replaceChildren();
     const filled = slots.filter(hasPhoto);
     const parts = [
       h('div', { class: 'receipt-head' }, h('span', { class: 'sub' }, `Фото чека чи покупки (до ${MAX_PHOTOS}, необов'язково)`)),
-      filled.length > 0 && h('div', { class: 'photo-grid' }, filled.map((slot) => {
-        const src = imageOf(slot);
-        return h('div', { class: 'photo-item' },
-          h('a', { href: src, target: '_blank', rel: 'noopener' }, h('img', { src, alt: 'Фото до витрати' })),
-          h('button', {
-            type: 'button', class: 'photo-remove', title: 'Прибрати фото', 'aria-label': 'Прибрати фото',
-            onClick: () => {
-              slot.file = null;
-              slot.removed = true;
-              render();
-            },
-          }, '✕'),
-          h('button', { type: 'button', class: 'secondary photo-scan', onClick: (e) => recognize(slot, e.currentTarget) }, '🔍 Розпізнати'),
-        );
-      })),
+      filled.length > 0 && photoCarousel(filled.map((slot) => ({
+        src: imageOf(slot),
+        onRemove: () => {
+          slot.file = null;
+          slot.removed = true;
+          render();
+        },
+      }))),
       freeSlots().length > 0 && h('div', { class: 'receipt-actions' },
         h('button', { type: 'button', class: 'secondary', onClick: () => pick('environment') }, '📷 Сфотографувати'),
         h('button', { type: 'button', class: 'secondary', onClick: () => pick(null) }, filled.length > 0 ? '🖼 Додати ще фото' : '🖼 Вибрати фото'),
       ),
-      results,
     ];
     box.replaceChildren(...parts.filter(Boolean));
   }
@@ -2070,7 +2003,7 @@ function expenseFormCard(groupId, members, categories, rates, reload, editing = 
   const descriptionInput = h('input', {
     name: 'description', required: true, maxLength: 200, placeholder: 'Напр. «Продукти»', value: editing?.description ?? '',
   });
-  const receipt = receiptField(editing?.photoUrls ?? [], amountInput, descriptionInput);
+  const receipt = receiptField(editing?.photoUrls ?? []);
 
   const form = h('form', {},
     receipt.el,
@@ -2217,7 +2150,8 @@ function expensesCard(groupId, expenses, profileOf, reload, onEdit) {
       h('summary', {},
         h('div', { class: 'expense-main' },
           h('div', { class: 'expense-title' }, e.description,
-            e.category ? h('span', { class: 'tag' }, categoryLabel(e.category)) : null),
+            e.category ? h('span', { class: 'tag' }, categoryLabel(e.category)) : null,
+            e.photoUrls.some(Boolean) ? h('span', { class: 'tag', title: 'Є фото' }, `📷 ${e.photoUrls.filter(Boolean).length}`) : null),
           h('div', { class: 'sub' }, formatDate(e.date)),
         ),
         h('div', { class: 'expense-amount' },
@@ -2227,6 +2161,7 @@ function expensesCard(groupId, expenses, profileOf, reload, onEdit) {
         h('span', { class: 'chevron', 'aria-hidden': 'true' }, '›'),
       ),
       h('div', { class: 'expense-body' },
+        e.photoUrls.some(Boolean) && photoCarousel(e.photoUrls.filter(Boolean).map((src) => ({ src }))),
         h('div', { class: 'field' },
           h('span', { class: 'field-label' }, 'Хто платив'),
           h('div', { class: 'pills' }, personPill(profileOf(e.paidBy))),
@@ -2239,8 +2174,6 @@ function expensesCard(groupId, expenses, profileOf, reload, onEdit) {
           `${currencyLabel(e.currency)} → ${currencyLabel(baseCurrency)}: 1 ${currencySymbol(e.currency)} = ${formatRate(e.rate)} ${currencySymbol(baseCurrency)}`) : null,
         h('div', { class: 'expense-actions' },
           e.edited ? h('span', { class: 'sub' }, 'змінено') : null,
-          e.photoUrls.filter(Boolean).map((url, i) =>
-            h('a', { class: 'photo-thumb', href: url, target: '_blank', rel: 'noopener', title: `Фото ${i + 1}` }, h('img', { src: url, alt: `Фото ${i + 1}` }))),
           h('button', { class: 'link edit', title: 'Редагувати витрату', onClick: () => onEdit(e) }, '✎ Редагувати'),
           h('button', {
             class: 'link',
