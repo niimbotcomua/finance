@@ -2,6 +2,7 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/+esm';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 import { computeBalances, remainderShare, simplifyDebts, splitEqually } from './balances.js';
+import { filterByPeriod, summarize } from './analytics.js';
 
 const configured = SUPABASE_URL.startsWith('https://') && !SUPABASE_ANON_KEY.includes('ВСТАВТЕ');
 const supabase = configured ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
@@ -255,10 +256,60 @@ function renderProfile() {
 
 // ---------- Адмінка ----------
 
+const TAG_ICONS = [
+  '🛒', '🍎', '🥖', '🍽️', '☕', '🍕', '🍔', '🍺', '🍷', '🍰',
+  '🚕', '🚌', '🚗', '⛽', '🅿️', '✈️', '🚆', '🏨', '🏠', '🛋️',
+  '💡', '💧', '🔥', '📶', '📱', '💻', '🎉', '🎬', '🎮', '🎵',
+  '🎁', '🎾', '🏓', '⚽', '🏋️', '🧘', '🏊', '🚴', '💊', '🏥',
+  '💇', '🧴', '👕', '👟', '🛍️', '📚', '🎓', '🐶', '👶', '🧹',
+  '🔧', '💼', '💳', '🏦', '🧾', '📦',
+];
+
+/** Кнопка зі значком тегу, що відкриває сітку емодзі; значення — у прихованому полі name="icon". */
+function iconPicker(initial = '') {
+  const input = h('input', { type: 'hidden', name: 'icon', value: initial });
+  const button = h('button', {
+    type: 'button', class: 'secondary icon-button', 'aria-haspopup': 'true', 'aria-expanded': 'false',
+    title: 'Вибрати значок',
+  });
+  const grid = h('div', { class: 'icon-grid', hidden: true, role: 'listbox', 'aria-label': 'Значки' });
+  const wrap = h('div', { class: 'icon-picker' }, input, button, grid);
+  const show = () => { button.textContent = input.value || '＋'; };
+  const close = () => { grid.hidden = true; button.setAttribute('aria-expanded', 'false'); };
+  const choose = (icon) => {
+    input.value = icon;
+    show();
+    close();
+    button.focus();
+    wrap.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  grid.append(
+    ...TAG_ICONS.map((icon) => h('button', {
+      type: 'button', class: icon === initial ? 'icon-option selected' : 'icon-option', role: 'option',
+      'aria-selected': String(icon === initial), onClick: () => choose(icon),
+    }, icon)),
+    h('button', { type: 'button', class: 'icon-option none', onClick: () => choose(''), title: 'Без значка' }, 'Без значка'),
+  );
+  button.addEventListener('click', () => {
+    const opening = grid.hidden;
+    document.querySelectorAll('.icon-grid').forEach((g) => { g.hidden = true; });
+    grid.hidden = !opening;
+    button.setAttribute('aria-expanded', String(opening));
+  });
+  wrap.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+  show();
+  return wrap;
+}
+
+// Клік поза вибором значка закриває його.
+document.addEventListener('click', (e) => {
+  if (!e.target.closest?.('.icon-picker')) document.querySelectorAll('.icon-grid').forEach((g) => { g.hidden = true; });
+});
+
 async function renderAdmin() {
   if (!currentUser.isAdmin) throw new Error('Цей розділ доступний лише адміністратору');
   const [categories, users] = await Promise.all([
-    run(supabase.from('categories').select('id, name, icon').order('id')),
+    run(supabase.from('categories').select('id, name, icon, sort_order').order('sort_order').order('id')),
     run(supabase.rpc('admin_users')),
   ]);
   const reload = () => renderAdmin().catch((err) => toast(err.message));
@@ -266,7 +317,7 @@ async function renderAdmin() {
   const addError = h('div', { class: 'error' });
   const addForm = h('form', {},
     h('div', { class: 'row tag-row' },
-      h('input', { name: 'icon', placeholder: '🙂', maxLength: 8, 'aria-label': 'Значок', class: 'icon-input' }),
+      iconPicker(),
       h('input', { name: 'name', placeholder: 'Назва тегу, напр. «Спорт»', required: true, maxLength: 40 }),
       h('button', { type: 'submit' }, 'Додати'),
     ),
@@ -276,19 +327,39 @@ async function renderAdmin() {
     await run(supabase.from('categories').insert({
       name: String(data.get('name')).trim(),
       icon: String(data.get('icon')).trim(),
+      sort_order: Math.max(0, ...categories.map((c) => c.sort_order)) + 1,
     }));
     toast('Тег додано');
     reload();
   }));
 
-  const tagRow = (c) => {
+  // Переміщення тегу вгору/вниз: зберігаємо весь новий порядок одним запитом.
+  const move = async (index, delta) => {
+    const ids = categories.map((c) => c.id);
+    [ids[index], ids[index + delta]] = [ids[index + delta], ids[index]];
+    try {
+      await run(supabase.rpc('admin_reorder_categories', { ids }));
+      reload();
+    } catch (err) {
+      toast(err.message);
+    }
+  };
+
+  const tagRow = (c, index) => {
     const error = h('div', { class: 'error' });
+    const saveButton = h('button', { type: 'submit', class: 'secondary' }, 'Зберегти');
     const form = h('form', {},
       h('div', { class: 'row tag-row' },
-        h('input', { name: 'icon', value: c.icon, maxLength: 8, 'aria-label': 'Значок', class: 'icon-input' }),
+        h('div', { class: 'order' },
+          h('button', { type: 'button', class: 'link', title: 'Вище', disabled: index === 0, onClick: () => move(index, -1) }, '▲'),
+          h('button', {
+            type: 'button', class: 'link', title: 'Нижче', disabled: index === categories.length - 1, onClick: () => move(index, 1),
+          }, '▼'),
+        ),
+        iconPicker(c.icon),
         h('input', { name: 'name', value: c.name, required: true, maxLength: 40, 'aria-label': 'Назва' }),
         h('div', { class: 'actions' },
-          h('button', { type: 'submit', class: 'secondary' }, 'Зберегти'),
+          saveButton,
           h('button', {
             type: 'button',
             class: 'link',
@@ -313,7 +384,12 @@ async function renderAdmin() {
         icon: String(data.get('icon')).trim(),
       }).eq('id', c.id));
       toast('Збережено');
+      saveButton.classList.remove('dirty');
     }));
+    // Підсвічуємо «Зберегти», коли є незбережені зміни (зокрема новий значок).
+    const markDirty = () => saveButton.classList.add('dirty');
+    form.addEventListener('input', markDirty);
+    form.addEventListener('change', markDirty);
     return h('li', {}, form);
   };
 
@@ -346,7 +422,7 @@ async function renderAdmin() {
     h('h1', {}, 'Адмінка'),
     h('div', { class: 'card' },
       h('h2', {}, `Теги витрат (${categories.length})`),
-      h('p', { class: 'sub' }, 'Спільні для всіх груп. Значок — будь-який емодзі (необов\'язково).'),
+      h('p', { class: 'sub' }, 'Спільні для всіх груп. Порядок тут — такий самий у списку вибору тегу. Натисніть на значок, щоб змінити його.'),
       h('ul', { class: 'list tags' }, categories.map(tagRow)),
       h('h3', {}, 'Новий тег'),
       addForm,
@@ -486,7 +562,7 @@ async function renderGroups() {
 // ---------- Сторінка групи ----------
 
 async function renderGroup(groupId) {
-  const [group, memberRows, expenseRows, settlementRows, categories] = await Promise.all([
+  const [group, memberRows, expenseRows, settlementRows, categories, history] = await Promise.all([
     run(supabase.from('groups').select('id, name, currency, invite_token, created_by').eq('id', groupId).maybeSingle()),
     run(supabase.from('group_members').select('profiles (id, name, email, avatar_path)').eq('group_id', groupId).order('id')),
     run(supabase.from('expenses')
@@ -499,7 +575,12 @@ async function renderGroup(groupId) {
       .eq('group_id', groupId)
       .order('date', { ascending: false })
       .order('id', { ascending: false })),
-    run(supabase.from('categories').select('id, name, icon').order('id')),
+    run(supabase.from('categories').select('id, name, icon').order('sort_order').order('id')),
+    run(supabase.from('expense_history')
+      .select('id, expense_id, action, changed_by, changed_at, old_data, new_data')
+      .eq('group_id', groupId)
+      .order('id', { ascending: false })
+      .limit(200)),
   ]);
   if (!group) throw new Error('Групу не знайдено');
 
@@ -510,7 +591,9 @@ async function renderGroup(groupId) {
     amount: Number(e.amount),
     paidBy: e.paid_by,
     date: e.date,
+    categoryId: e.category_id,
     category: categories.find((c) => c.id === e.category_id) ?? null,
+    edited: history.some((x) => x.action === 'updated' && x.expense_id === e.id),
     shares: e.expense_shares.map((s) => ({ userId: s.user_id, amount: Number(s.amount) })),
   }));
   const settlements = settlementRows.map((s) => ({
@@ -521,10 +604,47 @@ async function renderGroup(groupId) {
   const suggestedTransfers = simplifyDebts(balanceMap);
   const nameOf = (id) => members.find((m) => m.id === id)?.name ?? '—';
   const reload = () => renderGroup(groupId);
+  const categoryOf = (id) => categories.find((c) => c.id === id) ?? null;
+
+  // Форма витрати: «нова» або редагування вибраної витрати.
+  const formSlot = h('div', {});
+  const showExpenseForm = (editing = null) => {
+    formSlot.replaceChildren(expenseFormCard(groupId, members, categories, reload, editing, () => showExpenseForm()));
+    if (editing) {
+      formSlot.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      formSlot.querySelector('input[name=description]').focus({ preventScroll: true });
+    }
+  };
+  showExpenseForm();
+
+  // Кнопки-перемикачі панелей «Аналітика» та «Історія змін»; відкрита панель лишається відкритою після оновлення.
+  const panels = h('div', {});
+  const panelDefs = {
+    analytics: { label: '📊 Аналітика', render: () => analyticsCard(expenses, members, categoryOf) },
+    history: { label: '🕘 Історія змін', render: () => historyCard(history, nameOf, categoryOf) },
+  };
+  const toolbar = h('div', { class: 'toolbar' });
+  const renderPanels = () => {
+    toolbar.replaceChildren(...Object.entries(panelDefs).map(([key, def]) =>
+      h('button', {
+        type: 'button',
+        class: groupUi.panel === key ? '' : 'secondary',
+        'aria-pressed': String(groupUi.panel === key),
+        onClick: () => {
+          groupUi.panel = groupUi.panel === key ? null : key;
+          renderPanels();
+        },
+      }, def.label)));
+    panels.replaceChildren(...(groupUi.panel ? [panelDefs[groupUi.panel].render()] : []));
+  };
+  if (groupUi.groupId !== groupId) Object.assign(groupUi, { groupId, panel: null, period: 'all', inviteOpen: false });
+  renderPanels();
 
   mount(
     h('p', {}, h('a', { href: '#/' }, '← Усі групи')),
     groupTitle(group, reload),
+    toolbar,
+    panels,
     h('div', { class: 'grid' },
       h('div', {},
         balancesCard(balances, nameOf),
@@ -532,12 +652,129 @@ async function renderGroup(groupId) {
         membersCard(group, members, reload),
       ),
       h('div', {},
-        expenseFormCard(groupId, members, categories, reload),
+        formSlot,
         settlementFormCard(groupId, members, reload),
       ),
     ),
-    expensesCard(groupId, expenses, nameOf, reload),
+    expensesCard(groupId, expenses, nameOf, reload, showExpenseForm),
     settlementsCard(groupId, settlements, nameOf, reload),
+  );
+}
+
+// Стан сторінки групи, що переживає перемальовування (відкрита панель, період аналітики, блок запрошення).
+const groupUi = { groupId: null, panel: null, period: 'all', inviteOpen: false };
+
+// ---------- Аналітика ----------
+
+const PERIODS = { all: 'Весь час', month: 'Цей місяць', 'prev-month': 'Минулий місяць', year: 'Цей рік' };
+const monthName = (ym) => {
+  const text = new Date(`${ym}-01T00:00:00`).toLocaleDateString('uk-UA', { month: 'long', year: 'numeric' });
+  return text.charAt(0).toUpperCase() + text.slice(1);
+};
+
+/** Рядок з горизонтальною смужкою: підпис, смужка (частка від max), значення. */
+function barRow(label, value, max, detail) {
+  const pct = max > 0 ? Math.max(2, Math.round((value / max) * 100)) : 0;
+  return h('li', { class: 'bar-row', title: `${typeof label === 'string' ? label : ''} ${formatMoney(value)}${detail ? ` · ${detail}` : ''}`.trim() },
+    h('div', { class: 'bar-head' },
+      h('span', { class: 'bar-label' }, label),
+      h('span', { class: 'amount' }, formatMoney(value)),
+    ),
+    h('div', { class: 'bar-track' }, h('div', { class: 'bar-fill', style: `width:${pct}%` })),
+    detail && h('div', { class: 'sub' }, detail),
+  );
+}
+
+function analyticsCard(allExpenses, members, categoryOf) {
+  const card = h('div', { class: 'card analytics' });
+  const draw = () => {
+    const expenses = filterByPeriod(allExpenses, groupUi.period, today());
+    const s = summarize(expenses, members.map((m) => m.id));
+    const profileOf = (id) => members.find((m) => m.id === id) ?? { name: '—' };
+    const period = h('select', {
+      'aria-label': 'Період',
+      onChange: (e) => { groupUi.period = e.target.value; draw(); },
+    }, Object.entries(PERIODS).map(([value, label]) => h('option', { value, selected: value === groupUi.period }, label)));
+
+    const tile = (label, value, hint) => h('div', { class: 'stat' },
+      h('div', { class: 'stat-label' }, label),
+      h('div', { class: 'stat-value' }, value),
+      hint && h('div', { class: 'sub' }, hint));
+
+    const maxShare = Math.max(0, ...s.people.map((p) => p.share));
+    const maxCat = Math.max(0, ...s.categories.map((c) => c.total));
+    const maxMonth = Math.max(0, ...s.months.map((m) => m.total));
+    const pctOf = (v) => (s.total ? `${Math.round((v / s.total) * 100)}%` : '0%');
+
+    card.replaceChildren(
+      h('div', { class: 'card-head' }, h('h2', {}, 'Аналітика'), period),
+      s.count === 0
+        ? h('p', { class: 'empty' }, 'За цей період витрат немає.')
+        : h('div', {},
+          h('div', { class: 'stats' },
+            tile('Усього витрачено', formatMoney(s.total)),
+            tile('Витрат', String(s.count)),
+            tile('Середній чек', formatMoney(s.average), 'сума однієї витрати'),
+            tile('На 1 учасника', formatMoney(s.perMember), `загальна сума ÷ ${members.length}`),
+          ),
+          h('h3', {}, 'Учасники'),
+          h('p', { class: 'sub' }, 'Частка — скільки витрат припадає на людину; середній чек — її середня частка в одній витраті.'),
+          h('ul', { class: 'bars' }, s.people.map((p) => barRow(
+            h('span', { class: 'person' }, avatar(profileOf(p.userId)), profileOf(p.userId).name),
+            p.share, maxShare,
+            `${pctOf(p.share)} · заплатив(ла) ${formatMoney(p.paid)} · середній чек ${formatMoney(p.averageShare)} (${p.shareCount})`,
+          ))),
+          h('h3', {}, 'Теги'),
+          h('ul', { class: 'bars' }, s.categories.map((c) => {
+            const cat = categoryOf(c.categoryId);
+            return barRow(cat ? categoryLabel(cat) : 'Без тегу', c.total, maxCat, `${pctOf(c.total)} · витрат: ${c.count}`);
+          })),
+          s.months.length > 1 && h('h3', {}, 'По місяцях'),
+          s.months.length > 1 && h('ul', { class: 'bars' }, s.months.map((m) => barRow(monthName(m.month), m.total, maxMonth))),
+        ),
+    );
+  };
+  draw();
+  return card;
+}
+
+// ---------- Історія змін ----------
+
+function describeChange(entry, nameOf, categoryOf) {
+  const o = entry.old_data ?? {};
+  const n = entry.new_data ?? {};
+  const money = (v) => formatMoney(Number(v));
+  const tag = (id) => (id ? (categoryOf(id) ? categoryLabel(categoryOf(id)) : 'видалений тег') : 'без тегу');
+  const sharesText = (shares = []) => shares.map((x) => `${nameOf(x.user_id)} ${money(x.amount)}`).join(', ') || '—';
+  if (entry.action === 'created') return [`додав(ла) «${n.description}» — ${money(n.amount)}`];
+  if (entry.action === 'deleted') return [`видалив(ла) «${o.description}» — ${money(o.amount)}`];
+  const changes = [];
+  if (o.description !== n.description) changes.push(`опис: «${o.description}» → «${n.description}»`);
+  if (Number(o.amount) !== Number(n.amount)) changes.push(`сума: ${money(o.amount)} → ${money(n.amount)}`);
+  if (o.paid_by !== n.paid_by) changes.push(`платив(ла): ${nameOf(o.paid_by)} → ${nameOf(n.paid_by)}`);
+  if (o.date !== n.date) changes.push(`дата: ${formatDate(o.date)} → ${formatDate(n.date)}`);
+  if ((o.category_id ?? null) !== (n.category_id ?? null)) changes.push(`тег: ${tag(o.category_id)} → ${tag(n.category_id)}`);
+  if (JSON.stringify(o.shares) !== JSON.stringify(n.shares)) changes.push(`частки: ${sharesText(o.shares)} → ${sharesText(n.shares)}`);
+  return [`змінив(ла) «${o.description}»`, ...changes];
+}
+
+function historyCard(history, nameOf, categoryOf) {
+  const when = (ts) => new Date(ts).toLocaleString('uk-UA', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  const icons = { created: '➕', updated: '✎', deleted: '🗑' };
+  return h('div', { class: 'card' },
+    h('h2', {}, 'Історія змін'),
+    history.length === 0
+      ? h('p', { class: 'empty' }, 'Змін ще немає. Тут з\'являтимуться додавання, редагування та видалення витрат.')
+      : h('ul', { class: 'list history' }, history.map((entry) => {
+        const [headline, ...details] = describeChange(entry, nameOf, categoryOf);
+        return h('li', {},
+          h('div', {},
+            h('div', {}, `${icons[entry.action]} `, h('strong', {}, nameOf(entry.changed_by)), ` ${headline}`),
+            details.length > 0 && h('ul', { class: 'changes' }, details.map((d) => h('li', {}, d))),
+            h('div', { class: 'sub' }, when(entry.changed_at)),
+          ),
+        );
+      })),
   );
 }
 
@@ -670,10 +907,30 @@ function membersCard(group, members, reload) {
         ),
       ),
     ),
+    invitePanel(group, form, reload),
+  );
+}
+
+/** Кнопка «Запросити учасника», що розгортає посилання-запрошення та додавання за email. */
+function invitePanel(group, emailForm, reload) {
+  const body = h('div', { class: 'invite-body', id: `invite-${group.id}`, hidden: !groupUi.inviteOpen },
     inviteBlock(group, reload),
     h('p', { class: 'sub' }, 'Або додайте за email, якщо людина вже зареєстрована:'),
-    form,
+    emailForm,
   );
+  const toggle = h('button', {
+    type: 'button',
+    class: 'secondary invite-toggle',
+    'aria-expanded': String(groupUi.inviteOpen),
+    'aria-controls': body.id,
+    onClick: () => {
+      groupUi.inviteOpen = !groupUi.inviteOpen;
+      body.hidden = !groupUi.inviteOpen;
+      toggle.setAttribute('aria-expanded', String(groupUi.inviteOpen));
+      toggle.textContent = groupUi.inviteOpen ? 'Сховати запрошення' : '➕ Запросити учасника';
+    },
+  }, groupUi.inviteOpen ? 'Сховати запрошення' : '➕ Запросити учасника');
+  return h('div', {}, toggle, body);
 }
 
 async function copyText(text) {
@@ -789,22 +1046,39 @@ async function renderJoin(token) {
 }
 
 
-function expenseFormCard(groupId, members, categories, reload) {
+/** Форма нової витрати; якщо передано editing — редагування цієї витрати. */
+function expenseFormCard(groupId, members, categories, reload, editing = null, onCancel = null) {
   const error = h('div', { class: 'error' });
+
+  // Під час редагування: якщо частки — це рівний поділ між тими, хто бере участь, показуємо «Порівну».
+  const shareOf = new Map((editing?.shares ?? []).map((s) => [s.userId, s.amount]));
+  const participantIds = members.filter((m) => shareOf.get(m.id) > 0).map((m) => m.id);
+  const isEqual = !editing || (participantIds.length > 0 && participantIds.length === shareOf.size
+    && splitEqually(editing.amount, participantIds).every((s) => shareOf.get(s.userId) === s.amount));
+
   const splitType = h('select', { name: 'splitType' },
-    h('option', { value: 'equal' }, 'Порівну'),
-    h('option', { value: 'exact' }, 'Точними сумами'),
+    h('option', { value: 'equal', selected: isEqual }, 'Порівну'),
+    h('option', { value: 'exact', selected: !isEqual }, 'Точними сумами'),
   );
-  const equalBox = h('div', { class: 'checks' },
+  const equalBox = h('div', { class: 'checks', hidden: !isEqual },
     members.map((m) =>
-      h('label', {}, h('input', { type: 'checkbox', name: 'participant', value: String(m.id), checked: true }), m.name),
+      h('label', {}, h('input', {
+        type: 'checkbox', name: 'participant', value: String(m.id),
+        checked: !editing || !isEqual || participantIds.includes(m.id),
+      }), m.name),
     ),
   );
 
   // Точні суми: залишок автоматично підставляється в останнє поле, яке користувач не заповнював сам.
-  const amountInput = h('input', { name: 'amount', required: true, inputMode: 'decimal', placeholder: '0,00' });
-  const shareInputs = members.map((m) => h('input', { name: `share-${m.id}`, inputMode: 'decimal', placeholder: '0,00' }));
-  const manual = new Set();
+  const amountInput = h('input', {
+    name: 'amount', required: true, inputMode: 'decimal', placeholder: '0,00', value: editing ? formatInput(editing.amount) : '',
+  });
+  const shareInputs = members.map((m) => h('input', {
+    name: `share-${m.id}`, inputMode: 'decimal', placeholder: '0,00',
+    value: editing && !isEqual && shareOf.get(m.id) ? formatInput(shareOf.get(m.id)) : '',
+  }));
+  // Частки витрати, що редагується, вважаємо введеними вручну.
+  const manual = new Set(shareInputs.flatMap((input, i) => (input.value ? [i] : [])));
   const shareHint = h('div', { class: 'sub' });
   function updateShares() {
     const amount = parseMoney(amountInput.value);
@@ -833,7 +1107,7 @@ function expenseFormCard(groupId, members, categories, reload) {
   }));
   amountInput.addEventListener('input', updateShares);
 
-  const exactBox = h('div', { class: 'shares', hidden: true },
+  const exactBox = h('div', { class: 'shares', hidden: isEqual },
     members.map((m, i) => h('label', {}, m.name, shareInputs[i])),
     shareHint,
   );
@@ -844,21 +1118,23 @@ function expenseFormCard(groupId, members, categories, reload) {
   });
 
   const form = h('form', {},
-    h('label', {}, 'Опис', h('input', { name: 'description', required: true, maxLength: 200, placeholder: 'Напр. «Продукти»' })),
+    h('label', {}, 'Опис', h('input', {
+      name: 'description', required: true, maxLength: 200, placeholder: 'Напр. «Продукти»', value: editing?.description ?? '',
+    })),
     h('div', { class: 'row' },
       h('label', {}, 'Сума, ₴', amountInput),
-      h('label', {}, 'Дата', h('input', { name: 'date', type: 'date', value: today() })),
+      h('label', {}, 'Дата', h('input', { name: 'date', type: 'date', value: editing?.date ?? today() })),
     ),
     categories.length > 0 && h('label', {}, 'Тег',
       h('select', { name: 'category' },
         h('option', { value: '' }, 'Без тегу'),
-        categories.map((c) => h('option', { value: String(c.id) }, categoryLabel(c))),
+        categories.map((c) => h('option', { value: String(c.id), selected: c.id === editing?.categoryId }, categoryLabel(c))),
       ),
     ),
     h('div', { class: 'row' },
       h('label', {}, 'Хто платив',
         h('select', { name: 'paidBy' },
-          members.map((m) => h('option', { value: String(m.id), selected: m.id === currentUser.id }, m.name)),
+          members.map((m) => h('option', { value: String(m.id), selected: m.id === (editing?.paidBy ?? currentUser.id) }, m.name)),
         ),
       ),
       h('label', {}, 'Як ділити', splitType),
@@ -866,8 +1142,14 @@ function expenseFormCard(groupId, members, categories, reload) {
     equalBox,
     exactBox,
     error,
-    h('button', { type: 'submit' }, 'Додати витрату'),
+    editing
+      ? h('div', { class: 'row' },
+        h('button', { type: 'submit' }, 'Зберегти зміни'),
+        h('button', { type: 'button', class: 'secondary', onClick: () => onCancel?.() }, 'Скасувати'),
+      )
+      : h('button', { type: 'submit' }, 'Додати витрату'),
   );
+  if (editing) updateShares();
 
   form.addEventListener('submit', submitHandler(form, error, async (data) => {
     const amount = parseMoney(data.get('amount'));
@@ -893,20 +1175,28 @@ function expenseFormCard(groupId, members, categories, reload) {
       }
     }
 
-    await run(supabase.rpc('add_expense', {
-      gid: groupId,
+    const fields = {
       description: String(data.get('description')).trim(),
       amount,
       paid_by: String(data.get('paidBy')),
       shares: shares.map((s) => ({ user_id: s.userId, amount: s.amount })),
       expense_date: data.get('date') || today(),
       category_id: data.get('category') ? Number(data.get('category')) : null,
-    }));
-    toast('Витрату додано');
+    };
+    if (editing) {
+      await run(supabase.rpc('update_expense', { expense_id: editing.id, ...fields }));
+      toast('Зміни збережено');
+    } else {
+      await run(supabase.rpc('add_expense', { gid: groupId, ...fields }));
+      toast('Витрату додано');
+    }
     reload();
   }));
 
-  return h('div', { class: 'card' }, h('h2', {}, 'Нова витрата'), form);
+  return h('div', { class: editing ? 'card editing' : 'card' },
+    h('h2', {}, editing ? `Редагування: «${editing.description}»` : 'Нова витрата'),
+    form,
+  );
 }
 
 function settlementFormCard(groupId, members, reload) {
@@ -947,7 +1237,7 @@ function settlementFormCard(groupId, members, reload) {
   return h('div', { class: 'card' }, h('h2', {}, 'Повернення боргу'), form);
 }
 
-function expensesCard(groupId, expenses, nameOf, reload) {
+function expensesCard(groupId, expenses, nameOf, reload, onEdit) {
   return h('div', { class: 'card' },
     h('h2', {}, 'Витрати'),
     expenses.length === 0
@@ -958,10 +1248,13 @@ function expensesCard(groupId, expenses, nameOf, reload) {
           return h('li', {},
             h('div', {},
               h('div', {}, e.description, e.category ? h('span', { class: 'tag' }, categoryLabel(e.category)) : null),
-              h('div', { class: 'sub' }, `${formatDate(e.date)} · платив(ла) ${nameOf(e.paidBy)} · ${shareText}`),
+              h('div', { class: 'sub' },
+                `${formatDate(e.date)} · платив(ла) ${nameOf(e.paidBy)} · ${shareText}`,
+                e.edited ? ' · змінено' : ''),
             ),
             h('div', { class: 'actions' },
               h('span', { class: 'amount' }, formatMoney(e.amount)),
+              h('button', { class: 'link edit', title: 'Редагувати витрату', onClick: () => onEdit(e) }, '✎'),
               h('button', {
                 class: 'link',
                 title: 'Видалити витрату',
