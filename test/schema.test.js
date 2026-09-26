@@ -430,6 +430,8 @@ test('дизайн застосунку: перемикає лише адмін'
   await rejects(as('anna', 'select public.admin_set_design($1)', ['pink']), 'Невідомий дизайн');
   await as('anna', 'select public.admin_set_design(design => $1)', ['mono']);
   assert.equal(await current(), 'mono');
+  await as('anna', 'select public.admin_set_design($1)', ['nova']);
+  assert.equal(await current(), 'nova');
   await as('anna', 'select public.admin_set_design($1)', ['dark']);
 });
 
