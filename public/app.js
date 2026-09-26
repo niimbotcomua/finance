@@ -766,25 +766,33 @@ async function renderGroup(groupId) {
   };
   showExpenseForm();
 
-  // Кнопки-перемикачі панелей «Аналітика» та «Історія змін»; відкрита панель лишається відкритою після оновлення.
+  // Меню «☰» біля назви групи відкриває додаткові блоки; відкритий блок лишається відкритим після оновлення.
   const panels = h('div', {});
   const panelDefs = {
+    transfers: {
+      label: '🤝 Хто кому винен',
+      count: suggestedTransfers.length,
+      render: () => transfersCard(groupId, suggestedTransfers, nameOf, reload),
+    },
+    settle: { label: '💸 Повернення боргу', render: () => settlementFormCard(groupId, members, reload) },
     analytics: { label: '📊 Аналітика', render: () => analyticsCard(expenses, members, categoryOf) },
     history: { label: '🕘 Історія змін', render: () => historyCard(history, nameOf, categoryOf) },
   };
-  const toolbar = h('div', { class: 'toolbar' });
+  const menu = groupMenu(panelDefs, (key) => {
+    groupUi.panel = groupUi.panel === key ? null : key;
+    renderPanels();
+    if (groupUi.panel) panels.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  });
   const renderPanels = () => {
-    toolbar.replaceChildren(...Object.entries(panelDefs).map(([key, def]) =>
+    menu.update(groupUi.panel);
+    const def = panelDefs[groupUi.panel];
+    panels.replaceChildren(...(def ? [h('div', { class: 'panel' },
+      def.render(),
       h('button', {
-        type: 'button',
-        class: groupUi.panel === key ? '' : 'secondary',
-        'aria-pressed': String(groupUi.panel === key),
-        onClick: () => {
-          groupUi.panel = groupUi.panel === key ? null : key;
-          renderPanels();
-        },
-      }, def.label)));
-    panels.replaceChildren(...(groupUi.panel ? [panelDefs[groupUi.panel].render()] : []));
+        type: 'button', class: 'link panel-close', title: 'Закрити', 'aria-label': 'Закрити',
+        onClick: () => { groupUi.panel = null; renderPanels(); },
+      }, '✕'),
+    )] : []));
   };
   if (groupUi.groupId !== groupId) Object.assign(groupUi, { groupId, panel: null, period: 'all', inviteOpen: false });
   renderPanels();
@@ -813,20 +821,15 @@ async function renderGroup(groupId) {
 
   mount(
     h('p', {}, archived ? h('a', { href: '#/archive' }, '← Архів') : h('a', { href: '#/' }, '← Усі групи')),
-    groupTitle(group, reload),
+    h('div', { class: 'group-head' }, groupTitle(group, reload), menu.el),
     archiveBar,
-    toolbar,
     panels,
     h('div', { class: 'grid' },
       h('div', {},
         balancesCard(balances, profileOf),
-        transfersCard(groupId, suggestedTransfers, nameOf, reload),
         membersCard(group, members, reload),
       ),
-      h('div', {},
-        formSlot,
-        settlementFormCard(groupId, members, reload),
-      ),
+      h('div', {}, formSlot),
     ),
     expensesCard(groupId, expenses, nameOf, profileOf, reload, showExpenseForm),
     settlementsCard(groupId, settlements, nameOf, reload),
@@ -835,6 +838,54 @@ async function renderGroup(groupId) {
 
 // Стан сторінки групи, що переживає перемальовування (відкрита панель, період аналітики, блок запрошення).
 const groupUi = { groupId: null, panel: null, period: 'all', inviteOpen: false };
+
+/** Кнопка «☰» з випадаючим списком блоків групи. onPick(key) відкриває/закриває блок. */
+function groupMenu(defs, onPick) {
+  const list = h('div', { class: 'menu-list', role: 'menu', hidden: true });
+  const button = h('button', {
+    type: 'button', class: 'menu-button', title: 'Меню групи', 'aria-label': 'Меню групи',
+    'aria-haspopup': 'true', 'aria-expanded': 'false',
+    onClick: (e) => {
+      e.stopPropagation();
+      setOpen(list.hidden);
+    },
+  });
+  button.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>';
+  const el = h('div', { class: 'menu' }, button, list);
+
+  const close = (e) => {
+    if (e.type === 'keydown' && e.key !== 'Escape') return;
+    if (e.type === 'click' && el.contains(e.target)) return;
+    setOpen(false);
+  };
+  function setOpen(open) {
+    list.hidden = !open;
+    button.setAttribute('aria-expanded', String(open));
+    button.classList.toggle('open', open);
+    // Закривається кліком поза меню або клавішею Esc.
+    const method = open ? 'addEventListener' : 'removeEventListener';
+    document[method]('click', close);
+    document[method]('keydown', close);
+  }
+
+  return {
+    el,
+    update(active) {
+      list.replaceChildren(...Object.entries(defs).map(([key, def]) =>
+        h('button', {
+          type: 'button', role: 'menuitem', class: key === active ? 'menu-item active' : 'menu-item',
+          onClick: () => {
+            setOpen(false);
+            onPick(key);
+          },
+        },
+        h('span', {}, def.label),
+        def.count ? h('span', { class: 'menu-count' }, String(def.count)) : null,
+        key === active ? h('span', { class: 'menu-check' }, '✓') : null)));
+      button.classList.toggle('has-active', Boolean(active));
+    },
+  };
+}
 
 // ---------- Аналітика ----------
 
