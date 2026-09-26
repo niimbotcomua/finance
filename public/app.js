@@ -11,6 +11,7 @@ const supabase = configured ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : nu
 const app = document.getElementById('app');
 const userbox = document.getElementById('userbox');
 const toastEl = document.getElementById('toast');
+const tabbar = document.getElementById('tabbar');
 
 let currentUser = null;
 
@@ -141,7 +142,6 @@ function submitHandler(form, errorEl, action) {
 function renderUserbox() {
   userbox.replaceChildren();
   if (!currentUser) return;
-  if (currentUser.isAdmin) userbox.append(h('a', { href: '#/admin', class: 'admin-link' }, 'Адмінка'));
   userbox.append(
     h('a', { href: '#/profile', class: 'me', title: 'Мій профіль' }, avatar(currentUser), h('span', { class: 'me-name' }, currentUser.name)),
     h('button', {
@@ -154,6 +154,36 @@ function renderUserbox() {
       },
     }, 'Вийти'),
   );
+}
+
+// ---------- Нижня панель розділів ----------
+
+// Прості лінійні значки (статичні рядки, без даних користувача).
+const TAB_ICONS = {
+  groups: '<path d="M16 19v-1a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v1"/><circle cx="9" cy="7" r="3.5"/><path d="M22 19v-1a4 4 0 0 0-3-3.87M16 3.13a3.5 3.5 0 0 1 0 6.75"/>',
+  archive: '<rect x="3" y="4" width="18" height="5" rx="1.5"/><path d="M5 9v9a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9M10 13h4"/>',
+  profile: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+  admin: '<path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z"/>',
+};
+
+function tabIcon(name) {
+  const icon = h('span', { class: 'tab-icon', 'aria-hidden': 'true' });
+  icon.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${TAB_ICONS[name]}</svg>`;
+  return icon;
+}
+
+function renderTabbar(hash) {
+  const tabs = [
+    { key: 'groups', href: '#/', label: 'Групи', active: hash === '#/' || hash.startsWith('#/groups/') },
+    { key: 'archive', href: '#/archive', label: 'Архів', active: hash === '#/archive' },
+    { key: 'profile', href: '#/profile', label: 'Профіль', active: hash === '#/profile' },
+    currentUser?.isAdmin && { key: 'admin', href: '#/admin', label: 'Адмінка', active: hash === '#/admin' },
+  ].filter(Boolean);
+  tabbar.hidden = !currentUser;
+  document.body.classList.toggle('has-tabbar', Boolean(currentUser));
+  tabbar.replaceChildren(...tabs.map((t) =>
+    h('a', { href: t.href, class: t.active ? 'tab active' : 'tab', 'aria-current': t.active ? 'page' : null },
+      tabIcon(t.key), h('span', {}, t.label))));
 }
 
 // ---------- Мій профіль ----------
@@ -576,17 +606,71 @@ function avatarStack(profiles, max = 5) {
   );
 }
 
-async function renderGroups() {
-  const groups = (await run(supabase.rpc('my_groups'))).map((g) => ({
+const formatCreated = (ts) => new Date(ts).toLocaleDateString('uk-UA');
+
+async function setGroupArchived(groupId, archived) {
+  await run(supabase.rpc('set_group_archived', { gid: groupId, archived }));
+  toast(archived ? 'Групу перенесено в архів' : 'Групу повернуто з архіву');
+}
+
+/** Список груп: активні (showArchive = false) або архівні. */
+async function renderGroups(showArchive = false) {
+  const allGroups = (await run(supabase.rpc('group_list'))).map((g) => ({
     id: g.id,
     name: g.name,
     memberCount: Number(g.member_count),
     myBalance: Number(g.my_balance),
+    createdAt: g.created_at,
+    archived: g.archived,
   }));
+  const groups = allGroups.filter((g) => g.archived === showArchive);
+  const archivedCount = allGroups.filter((g) => g.archived).length;
   // Учасники всіх груп одним запитом — для мініатюр аватарів.
   const memberRows = groups.length === 0 ? [] : await run(supabase.from('group_members')
     .select('group_id, profiles (id, name, avatar_path)').in('group_id', groups.map((g) => g.id)).order('id'));
   const membersOf = (groupId) => memberRows.filter((r) => r.group_id === groupId && r.profiles).map((r) => r.profiles);
+
+  const groupItem = (g) =>
+    h('li', {},
+      h('div', { class: 'group-info' },
+        h('a', { class: 'group-name', href: `#/groups/${g.id}` }, g.name),
+        h('div', { class: 'group-meta' },
+          avatarStack(membersOf(g.id)),
+          h('span', { class: 'sub' }, `${g.memberCount} учасн.`),
+        ),
+        h('div', { class: 'created' }, `створено ${formatCreated(g.createdAt)}`),
+      ),
+      showArchive
+        ? h('button', {
+          class: 'secondary',
+          onClick: async (e) => {
+            e.target.disabled = true;
+            try {
+              await setGroupArchived(g.id, false);
+              renderGroups(true);
+            } catch (err) {
+              toast(err.message);
+              e.target.disabled = false;
+            }
+          },
+        }, 'Повернути')
+        : balanceLabel(g.myBalance),
+    );
+
+  if (showArchive) {
+    mount(
+      h('h1', {}, 'Архів'),
+      h('div', { class: 'card' },
+        groups.length === 0
+          ? h('p', { class: 'empty' }, 'В архіві порожньо. Групу, де всі розрахувалися, можна перенести сюди кнопкою «В архів» на її сторінці.')
+          : h('ul', { class: 'list' }, groups.map(groupItem)),
+      ),
+      groups.length > 0 && h('p', { class: 'sub hint' },
+        'Архів бачите лише ви — в інших учасників група лишається як була. Якщо в групі знову з\'являться борги, вона сама повернеться до активних.'),
+    );
+    return;
+  }
+
   const error = h('div', { class: 'error' });
   const form = h('form', {},
     h('div', { class: 'row' },
@@ -607,21 +691,8 @@ async function renderGroups() {
     groups.length > 0 && h('div', { class: 'card' }, h('h2', {}, 'Загальний баланс'), balanceLabel(total)),
     h('div', { class: 'card' },
       groups.length === 0
-        ? h('p', { class: 'empty' }, 'У вас ще немає груп. Створіть першу нижче.')
-        : h('ul', { class: 'list' },
-          groups.map((g) =>
-            h('li', {},
-              h('div', {},
-                h('a', { class: 'group-name', href: `#/groups/${g.id}` }, g.name),
-                h('div', { class: 'group-meta' },
-                  avatarStack(membersOf(g.id)),
-                  h('span', { class: 'sub' }, `${g.memberCount} учасн.`),
-                ),
-              ),
-              balanceLabel(g.myBalance),
-            ),
-          ),
-        ),
+        ? h('p', { class: 'empty' }, archivedCount > 0 ? 'Активних груп немає. Створіть нову нижче.' : 'У вас ще немає груп. Створіть першу нижче.')
+        : h('ul', { class: 'list' }, groups.map(groupItem)),
     ),
     h('div', { class: 'card' }, h('h2', {}, 'Нова група'), form),
   );
@@ -632,7 +703,7 @@ async function renderGroups() {
 async function renderGroup(groupId) {
   const [group, memberRows, expenseRows, settlementRows, categories, history] = await Promise.all([
     run(supabase.from('groups').select('id, name, currency, invite_token, created_by').eq('id', groupId).maybeSingle()),
-    run(supabase.from('group_members').select('profiles (id, name, email, avatar_path)').eq('group_id', groupId).order('id')),
+    run(supabase.from('group_members').select('user_id, archived_at, profiles (id, name, email, avatar_path)').eq('group_id', groupId).order('id')),
     run(supabase.from('expenses')
       .select('id, description, amount, paid_by, date, category_id, receipt_path, expense_shares (user_id, amount)')
       .eq('group_id', groupId)
@@ -718,9 +789,32 @@ async function renderGroup(groupId) {
   if (groupUi.groupId !== groupId) Object.assign(groupUi, { groupId, panel: null, period: 'all', inviteOpen: false });
   renderPanels();
 
+  // Архів: коли всі розрахувалися, групу можна сховати (лише для себе).
+  const settled = balances.every((b) => b.balance === 0);
+  const archived = settled && Boolean(memberRows.find((r) => r.user_id === currentUser.id)?.archived_at);
+  const archiveButton = (toArchive) => h('button', {
+    class: 'secondary',
+    onClick: async (e) => {
+      e.target.disabled = true;
+      try {
+        await setGroupArchived(groupId, toArchive);
+        reload();
+      } catch (err) {
+        toast(err.message);
+        e.target.disabled = false;
+      }
+    },
+  }, toArchive ? 'В архів' : 'Повернути з архіву');
+  const archiveBar = archived
+    ? h('div', { class: 'archive-bar' }, h('span', {}, '🗄 Група в архіві'), archiveButton(false))
+    : settled && (expenses.length > 0 || settlements.length > 0)
+      ? h('div', { class: 'archive-bar' }, h('span', {}, 'Усі розрахувалися 🎉'), archiveButton(true))
+      : null;
+
   mount(
-    h('p', {}, h('a', { href: '#/' }, '← Усі групи')),
+    h('p', {}, archived ? h('a', { href: '#/archive' }, '← Архів') : h('a', { href: '#/' }, '← Усі групи')),
     groupTitle(group, reload),
+    archiveBar,
     toolbar,
     panels,
     h('div', { class: 'grid' },
@@ -891,6 +985,9 @@ function groupTitle(group, reload) {
   }, '✎'));
   return title;
 }
+
+/** Ім'я учасника; своє — жирним. */
+const memberName = (m) => (m.id === currentUser.id ? h('strong', {}, m.name) : m.name);
 
 /** Ім'я з маленьким аватаром; поточного користувача позначено «ви». */
 function personLabel(profile) {
@@ -1287,7 +1384,7 @@ function expenseFormCard(groupId, members, categories, reload, editing = null, o
       h('label', {}, h('input', {
         type: 'checkbox', name: 'participant', value: String(m.id),
         checked: !editing || !isEqual || participantIds.includes(m.id),
-      }), avatar(m, 'xs'), m.name),
+      }), avatar(m, 'xs'), memberName(m)),
     ),
   );
 
@@ -1330,7 +1427,7 @@ function expenseFormCard(groupId, members, categories, reload, editing = null, o
   amountInput.addEventListener('input', updateShares);
 
   const exactBox = h('div', { class: 'shares', hidden: isEqual },
-    members.map((m, i) => h('label', {}, m.name, shareInputs[i])),
+    members.map((m, i) => h('label', {}, h('span', { class: 'person' }, avatar(m, 'xs'), memberName(m)), shareInputs[i])),
     shareHint,
   );
   splitType.addEventListener('change', () => {
@@ -1357,14 +1454,17 @@ function expenseFormCard(groupId, members, categories, reload, editing = null, o
         categories.map((c) => h('option', { value: String(c.id), selected: c.id === editing?.categoryId }, categoryLabel(c))),
       ),
     ),
-    h('div', { class: 'row' },
-      h('label', {}, 'Хто платив',
-        h('select', { name: 'paidBy' },
-          members.map((m) => h('option', { value: String(m.id), selected: m.id === (editing?.paidBy ?? currentUser.id) }, m.name)),
+    h('div', { class: 'field' },
+      h('span', { class: 'field-label' }, 'Хто платив'),
+      h('div', { class: 'checks pick' },
+        members.map((m) =>
+          h('label', {}, h('input', {
+            type: 'radio', name: 'paidBy', value: String(m.id), checked: m.id === (editing?.paidBy ?? currentUser.id),
+          }), avatar(m, 'xs'), memberName(m)),
         ),
       ),
-      h('label', {}, 'Як ділити', splitType),
     ),
+    h('label', {}, 'Як ділити', splitType),
     equalBox,
     exactBox,
     error,
@@ -1538,6 +1638,8 @@ function settlementsCard(groupId, settlements, nameOf, reload) {
 
 async function route() {
   const hash = location.hash || '#/';
+  tabbar.hidden = true; // показуємо лише на розділах для залогіненого користувача
+  document.body.classList.remove('has-tabbar');
   try {
     if (!currentUser) {
       currentUser = await loadCurrentUser();
@@ -1564,7 +1666,9 @@ async function route() {
       return;
     }
     const groupMatch = hash.match(/^#\/groups\/(\d+)$/);
+    renderTabbar(groupMatch || hash === '#/archive' || hash === '#/profile' || hash === '#/admin' ? hash : '#/');
     if (hash === '#/profile') renderProfile();
+    else if (hash === '#/archive') await renderGroups(true);
     else if (hash === '#/admin') await renderAdmin();
     else if (groupMatch) await renderGroup(Number(groupMatch[1]));
     else await renderGroups();
@@ -1596,6 +1700,7 @@ async function start() {
     if (event === 'SIGNED_OUT') {
       currentUser = null;
       renderUserbox();
+      renderTabbar('');
     }
   });
   window.addEventListener('hashchange', route);

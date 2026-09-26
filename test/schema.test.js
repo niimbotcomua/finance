@@ -339,3 +339,31 @@ test('фото квитанції: бачать і змінюють лише у�
   // Напряму змінити витрату не можна — лише через функцію.
   await rejects(as('vira', 'update public.expenses set receipt_path = $1 where id = $2', [path, eid]), 'permission denied');
 });
+
+test('архів груп: лише розрахована група і лише для себе', async () => {
+  const [{ create_group: gid }] = await as('anna', 'select public.create_group($1)', ['Архів']);
+  await as('anna', 'select public.add_group_member($1, $2)', [gid, 'bohdan@example.com']);
+  const archived = async (who) =>
+    (await as(who, 'select archived from public.group_list() where id = $1', [gid]))[0].archived;
+  const archive = (who, value) => as(who, 'select public.set_group_archived(gid => $1, archived => $2)', [gid, value]);
+
+  await as('anna', 'select public.add_expense(gid => $1, description => $2, amount => 1000, paid_by => $3, shares => $4::jsonb)',
+    [gid, 'Таксі', users.anna, JSON.stringify([{ user_id: users.anna, amount: 500 }, { user_id: users.bohdan, amount: 500 }])]);
+  await rejects(archive('anna', true), 'всі розрахувалися');
+  await rejects(archive('stranger', true), 'Групу не знайдено');
+
+  await as('bohdan', 'insert into public.settlements (group_id, from_user, to_user, amount) values ($1, $2, $3, 500)',
+    [gid, users.bohdan, users.anna]);
+  await archive('anna', true);
+  assert.equal(await archived('anna'), true);
+  assert.equal(await archived('bohdan'), false); // в архіві лише в Анни
+  assert.ok((await as('anna', 'select created_at from public.group_list() where id = $1', [gid]))[0].created_at);
+
+  // Новий борг — група сама повертається до активних.
+  await as('bohdan', 'select public.add_expense(gid => $1, description => $2, amount => 200, paid_by => $3, shares => $4::jsonb)',
+    [gid, 'Кава', users.bohdan, JSON.stringify([{ user_id: users.anna, amount: 200 }])]);
+  assert.equal(await archived('anna'), false);
+
+  await archive('anna', false);
+  assert.equal(await archived('anna'), false);
+});
