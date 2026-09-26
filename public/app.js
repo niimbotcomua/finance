@@ -3,6 +3,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 import { computeBalances, convertAmount, convertShares, remainderShare, simplifyDebts, splitEqually } from './balances.js';
 import { filterByPeriod, summarize } from './analytics.js';
+import { REPORT_PERIODS, buildReport, writeWorkbook } from './report.js';
 
 const configured = SUPABASE_URL.startsWith('https://') && !SUPABASE_ANON_KEY.includes('ВСТАВТЕ');
 const supabase = configured ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
@@ -1134,6 +1135,7 @@ async function renderGroup(groupId) {
     rates: { label: '💱 Курси валют', count: rates.size, muted: true, render: () => ratesCard(group, rateRows, reload) },
     analytics: { label: '📊 Аналітика', render: () => analyticsCard(expenses, members, categoryOf) },
     history: { label: '🕘 Історія змін', render: () => historyCard(history, nameOf, categoryOf) },
+    report: { label: '📄 Звіт (Excel)', render: () => reportCard(group, members, expenses, settlements, categoryOf) },
   };
   const menu = groupMenu(panelDefs, (key) => {
     groupUi.panel = groupUi.panel === key ? null : key;
@@ -1187,6 +1189,75 @@ async function renderGroup(groupId) {
     ),
     expensesCard(groupId, expenses, profileOf, reload, showExpenseForm),
     settlementsCard(groupId, settlements, nameOf, reload),
+  );
+}
+
+// ---------- Звіт по групі (Excel / Google Таблиці) ----------
+
+const EXCELJS_URL = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
+let excelLoading = null;
+
+/** Бібліотека для .xlsx (~1 МБ) — завантажується лише тоді, коли звіт вперше потрібен. */
+function loadExcelJS() {
+  excelLoading ??= new Promise((resolve, reject) => {
+    const script = h('script', { src: EXCELJS_URL });
+    script.onload = () => resolve(window.ExcelJS);
+    script.onerror = () => {
+      excelLoading = null;
+      reject(new Error('Не вдалося завантажити модуль Excel. Перевірте інтернет.'));
+    };
+    document.head.append(script);
+  });
+  return excelLoading;
+}
+
+function reportCard(group, members, expenses, settlements, categoryOf) {
+  const period = h('select', { 'aria-label': 'Період звіту' },
+    Object.entries(REPORT_PERIODS).map(([value, label]) => h('option', { value }, label)));
+  const status = h('p', { class: 'sub' });
+  const button = h('button', {
+    type: 'button',
+    onClick: async () => {
+      button.disabled = true;
+      status.textContent = 'Готую звіт…';
+      try {
+        const ExcelJS = await loadExcelJS();
+        const now = new Date();
+        const report = buildReport({
+          group, members, settlements, categoryOf,
+          expenses: expenses.map((e) => ({ ...e, photoCount: e.photoPaths.filter(Boolean).length })),
+          period: period.value,
+          todayIso: today(),
+          generatedAt: new Date(now.getTime() - now.getTimezoneOffset() * 60000), // місцевий час у клітинці
+          currencyName: currencyInfo(group.currency).name,
+        });
+        const buffer = await writeWorkbook(ExcelJS, report).xlsx.writeBuffer();
+        const url = URL.createObjectURL(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+        const safeName = group.name.replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'група';
+        const link = h('a', { href: url, download: `Звіт — ${safeName} — ${today()}.xlsx` });
+        document.body.append(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 10000);
+        status.textContent = 'Готово — файл завантажено.';
+      } catch (err) {
+        status.textContent = err.message;
+      } finally {
+        button.disabled = false;
+      }
+    },
+  }, '⬇ Завантажити звіт (.xlsx)');
+
+  return h('div', { class: 'card' },
+    h('h2', {}, 'Звіт по групі'),
+    h('p', { class: 'sub' }, 'Файл Excel з чотирма аркушами: «Підсумок» (суми, хто скільки заплатив, баланси й хто кому винен), '
+      + '«Витрати» (кожна витрата: дата, опис, тег, хто платив, сума, валюта й курс, частка кожного учасника), '
+      + '«Повернення боргів» і «По тегах».'),
+    h('label', {}, 'Період', period),
+    button,
+    status,
+    h('p', { class: 'sub' }, 'Google Таблиці: відкрийте sheets.new → «Файл» → «Імпортувати» → «Завантажити» й виберіть цей файл '
+      + '(або просто завантажте його на Google Диск і відкрийте).'),
   );
 }
 
