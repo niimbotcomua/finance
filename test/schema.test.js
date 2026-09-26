@@ -254,3 +254,60 @@ test('теги витрат і супер-адмін', async () => {
   const [row] = await as('vira', 'select category_id from public.expenses where id = $1', [expId]);
   assert.equal(row.category_id, null);
 });
+
+test('редагування витрати та історія змін', async () => {
+  const [{ create_group: gid }] = await as('bohdan', 'select public.create_group($1)', ['Історія']);
+  await as('bohdan', 'select public.add_group_member($1, $2)', [gid, 'vira@example.com']);
+  const shares = (pairs) => JSON.stringify(pairs.map(([u, a]) => ({ user_id: users[u], amount: a })));
+  const [{ add_expense: eid }] = await as('bohdan',
+    'select public.add_expense(gid => $1, description => $2, amount => 1000, paid_by => $3, shares => $4::jsonb)',
+    [gid, 'Піца', users.bohdan, shares([['bohdan', 500], ['vira', 500]])]);
+
+  const edit = (who, amount, pairs, description = 'Піца велика') => as(who,
+    'select public.update_expense(expense_id => $1, description => $2, amount => $3, paid_by => $4, shares => $5::jsonb, expense_date => null)',
+    [eid, description, amount, users.bohdan, shares(pairs)]);
+
+  // Інший учасник може редагувати; чужий — ні; перевірки ті самі, що й при додаванні.
+  await edit('vira', 1200, [['bohdan', 400], ['vira', 800]]);
+  await rejects(edit('stranger', 1200, [['bohdan', 1200]]), 'Витрату не знайдено');
+  await rejects(edit('vira', 1200, [['bohdan', 100]]), 'Сума часток');
+  const [e] = await as('vira', 'select amount, description from public.expenses where id = $1', [eid]);
+  assert.equal(Number(e.amount), 1200);
+  assert.equal(e.description, 'Піца велика');
+  const shareRows = await as('vira', 'select user_id, amount from public.expense_shares where expense_id = $1 order by amount', [eid]);
+  assert.deepEqual(shareRows.map((r) => Number(r.amount)), [400, 800]);
+
+  // Без змін — у історію нічого не пишемо.
+  await edit('vira', 1200, [['bohdan', 400], ['vira', 800]]);
+
+  await as('bohdan', 'delete from public.expenses where id = $1', [eid]);
+  const history = await as('vira', 'select action, changed_by, old_data, new_data from public.expense_history where group_id = $1 order by id', [gid]);
+  assert.deepEqual(history.map((h) => h.action), ['created', 'updated', 'deleted']);
+  assert.equal(history[1].changed_by, users.vira);
+  assert.equal(history[1].old_data.amount, 1000);
+  assert.equal(history[1].new_data.amount, 1200);
+  assert.equal(history[2].old_data.description, 'Піца велика');
+  assert.equal(history[2].old_data.shares.length, 2);
+
+  // Історію бачать лише учасники й ніхто не може її підробити.
+  assert.equal((await as('stranger', 'select * from public.expense_history where group_id = $1', [gid])).length, 0);
+  await rejects(as('vira', "insert into public.expense_history (group_id, action) values ($1, 'created')", [gid]), 'permission denied');
+  await rejects(as('vira', 'delete from public.expense_history'), 'permission denied');
+});
+
+test('порядок тегів змінює лише адмін', async () => {
+  const ids = (await as('vira', 'select id from public.categories order by sort_order, id')).map((r) => r.id);
+  const reversed = [...ids].reverse();
+  await rejects(as('vira', 'select public.admin_reorder_categories($1)', [reversed]), 'адміністратора');
+  await as('anna', 'select public.admin_reorder_categories(ids => $1)', [reversed]);
+  const after = (await as('vira', 'select id from public.categories order by sort_order, id')).map((r) => r.id);
+  assert.deepEqual(after, reversed);
+});
+
+test('група з витратами видаляється цілком (разом з історією)', async () => {
+  const [{ create_group: gid }] = await as('vira', 'select public.create_group($1)', ['На видалення']);
+  await as('vira', 'select public.add_expense(gid => $1, description => $2, amount => 100, paid_by => $3, shares => $4::jsonb)',
+    [gid, 'x', users.vira, JSON.stringify([{ user_id: users.vira, amount: 100 }])]);
+  await db.query('delete from public.groups where id = $1', [gid]);
+  assert.equal((await db.query('select count(*)::int as n from public.expense_history where group_id = $1', [gid])).rows[0].n, 0);
+});
