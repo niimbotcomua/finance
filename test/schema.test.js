@@ -1,7 +1,7 @@
-// Перевіряє supabase/schema.sql на справжньому Postgres (PGlite) з імітацією схеми auth від Supabase.
+// Перевіряє міграції supabase/migrations/*.sql на справжньому Postgres (PGlite) з імітацією схеми auth від Supabase.
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { PGlite } from '@electric-sql/pglite';
 
 const SUPABASE_STUB = `
@@ -47,9 +47,11 @@ const rejects = (promise, message) => assert.rejects(promise, (err) => err.messa
 before(async () => {
   db = new PGlite();
   await db.exec(SUPABASE_STUB);
-  const schema = readFileSync(new URL('../supabase/schema.sql', import.meta.url), 'utf8');
-  await db.exec(schema);
-  await db.exec(schema); // скрипт можна виконати повторно
+  const dir = new URL('../supabase/migrations/', import.meta.url);
+  const migrations = readdirSync(dir).filter((f) => f.endsWith('.sql')).sort()
+    .map((f) => readFileSync(new URL(f, dir), 'utf8'));
+  for (const sql of migrations) await db.exec(sql);
+  for (const sql of migrations) await db.exec(sql); // міграції можна виконати повторно
   await signUp('anna', 'anna@example.com', 'Анна');
   await signUp('bohdan', 'Bohdan@Example.com', 'Богдан');
   await signUp('vira', 'vira@example.com', '');
@@ -71,7 +73,7 @@ test('повний сценарій з правилами доступу', async
 
   await as('anna', 'select public.add_group_member(gid => $1, member_email => $2)', [gid, 'bohdan@example.com']);
   await as('anna', 'select public.add_group_member($1, $2)', [gid, 'VIRA@example.com']);
-  await rejects(as('anna', 'select public.add_group_member($1, $2)', [gid, 'nobody@example.com']), 'не знайдено');
+  await rejects(as('anna', 'select public.add_group_member($1, $2)', [gid, 'nobody@example.com']), 'не зареєстрований');
   await rejects(as('anna', 'select public.add_group_member($1, $2)', [gid, 'vira@example.com']), 'уже є учасником');
 
   // Прямий запис у таблиці заборонено — лише через функції.
@@ -138,4 +140,34 @@ test('учасника без історії можна видалити', async
   assert.equal((await as('stranger', 'select * from public.my_groups()')).length, 1);
   await as('bohdan', 'select public.remove_group_member(gid => $1, member => $2)', [gid, users.stranger]);
   assert.equal((await as('stranger', 'select * from public.my_groups()')).length, 0);
+});
+
+test('посилання-запрошення', async () => {
+  await signUp('newbie', 'newbie@example.com', 'Новенький');
+  const [{ create_group: gid }] = await as('anna', 'select public.create_group(group_name => $1)', ['Дача']);
+  const [{ invite_token: token }] = await as('anna', 'select invite_token from public.groups where id = $1', [gid]);
+
+  // Назву групи видно за посиланням навіть до входу, а без посилання — ні.
+  const [invite] = await as(null, 'select * from public.get_group_invite(token => $1)', [token]);
+  assert.equal(invite.name, 'Дача');
+  assert.equal(invite.already_member, false);
+  assert.equal((await as(null, 'select * from public.get_group_invite(token => gen_random_uuid())')).length, 0);
+  await rejects(as(null, 'select public.join_group(token => $1)', [token]), 'permission denied');
+
+  // Приєднання за посиланням (повторне — без помилки).
+  assert.equal((await as('newbie', 'select public.join_group(token => $1)', [token]))[0].join_group, gid);
+  await as('newbie', 'select public.join_group(token => $1)', [token]);
+  assert.equal((await as('newbie', 'select * from public.my_groups()')).length, 1);
+  assert.equal((await as('newbie', 'select * from public.get_group_invite(token => $1)', [token]))[0].already_member, true);
+
+  // Оновлення посилання: старе більше не працює; чужий не може оновити.
+  await rejects(as('stranger', 'select public.reset_group_invite(gid => $1)', [gid]), 'Групу не знайдено');
+  const [{ reset_group_invite: fresh }] = await as('anna', 'select public.reset_group_invite(gid => $1)', [gid]);
+  assert.notEqual(fresh, token);
+  await rejects(as('stranger', 'select public.join_group(token => $1)', [token]), 'недійсне');
+  await as('stranger', 'select public.join_group(token => $1)', [fresh]);
+  assert.equal((await as('stranger', 'select id from public.groups where id = $1', [gid])).length, 1);
+
+  // Незареєстрований email — підказка про посилання.
+  await rejects(as('anna', 'select public.add_group_member(gid => $1, member_email => $2)', [gid, 'ghost@example.com']), 'посилання-запрошення');
 });

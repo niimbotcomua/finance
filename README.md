@@ -9,7 +9,8 @@
 ## Можливості
 
 - Реєстрація та вхід через Supabase Auth (email + пароль, підтвердження пошти).
-- Групи; додавання учасників за email (учасник має бути зареєстрований).
+- Групи; запрошення за **посиланням** (людина реєструється й одразу потрапляє в групу)
+  або додавання вже зареєстрованих учасників за email.
 - Витрати: хто платив, дата, розподіл **порівну** або **точними сумами**.
 - Баланси учасників і **спрощення боргів** — мінімальний набір переказів «хто → кому».
 - Запис повернення боргу (кнопка «Сплачено» або вручну), скасування переказів, видалення витрат.
@@ -21,7 +22,8 @@
 ### 1. Supabase
 
 1. Створіть проєкт на [supabase.com](https://supabase.com) (регіон — Central EU, Frankfurt).
-2. **SQL Editor → New query** → вставте вміст [`supabase/schema.sql`](supabase/schema.sql) → **Run**.
+2. **SQL Editor → New query** → по черзі виконайте файли з [`supabase/migrations/`](supabase/migrations)
+   (`001_…`, `002_…`, …): вставте вміст → **Run**. Кожен файл можна виконувати повторно.
 3. **Authentication → URL Configuration → Site URL**: вкажіть адресу сайту на Vercel
    (напр. `https://finance-xxx.vercel.app`), щоб посилання з листів вели на ваш сайт.
 4. **Project Settings → API**: скопіюйте *Project URL* та *anon public key* у
@@ -50,7 +52,7 @@ public/index.html    сторінка
 public/app.js        інтерфейс і робота з Supabase
 public/balances.js   розподіл сум, баланси, спрощення боргів
 public/config.js     адреса та публічний ключ Supabase
-supabase/schema.sql  таблиці, правила доступу (RLS) і функції бази
+supabase/migrations/ таблиці, правила доступу (RLS) і функції бази (по черзі)
 test/                тести (node:test)
 vercel.json          налаштування Vercel
 ```
