@@ -3,6 +3,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
 import { computeBalances, remainderShare, simplifyDebts, splitEqually } from './balances.js';
 import { filterByPeriod, summarize } from './analytics.js';
+import { parseReceipt } from './receipt.js';
 
 const configured = SUPABASE_URL.startsWith('https://') && !SUPABASE_ANON_KEY.includes('ВСТАВТЕ');
 const supabase = configured ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
@@ -172,6 +173,57 @@ async function squareJpeg(file, size = 256) {
   );
   return new Promise((resolve, reject) =>
     canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('Не вдалося обробити фото'))), 'image/jpeg', 0.85));
+}
+
+/** Зменшує фото так, щоб довша сторона була не більше maxSide, і стискає в JPEG. */
+async function scaledJpeg(file, maxSide = 1600) {
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    throw new Error('Не вдалося відкрити фото. Спробуйте файл JPG або PNG.');
+  }
+  const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+  const canvas = h('canvas', { width: Math.round(bitmap.width * scale), height: Math.round(bitmap.height * scale) });
+  canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  return new Promise((resolve, reject) =>
+    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('Не вдалося обробити фото'))), 'image/jpeg', 0.85));
+}
+
+// ---------- Розпізнавання квитанцій (Tesseract.js, прямо в браузері, безкоштовно) ----------
+
+const TESSERACT_URL = 'https://cdn.jsdelivr.net/npm/tesseract.js@6.0.1/dist/tesseract.min.js';
+let tesseractLoading = null;
+
+/** Підвантажує бібліотеку розпізнавання лише тоді, коли вона вперше знадобилась. */
+function loadTesseract() {
+  tesseractLoading ??= new Promise((resolve, reject) => {
+    const script = h('script', { src: TESSERACT_URL });
+    script.onload = () => resolve(window.Tesseract);
+    script.onerror = () => {
+      tesseractLoading = null;
+      reject(new Error('Не вдалося завантажити розпізнавання. Перевірте інтернет.'));
+    };
+    document.head.append(script);
+  });
+  return tesseractLoading;
+}
+
+/** Фото (Blob або URL) → текст квитанції. onProgress отримує рядок стану для показу. */
+async function recognizeText(image, onProgress) {
+  onProgress('Завантажую розпізнавання… (перший раз — кілька секунд)');
+  const Tesseract = await loadTesseract();
+  const worker = await Tesseract.createWorker(['ukr', 'eng'], 1, {
+    logger: (m) => {
+      if (m.status === 'recognizing text') onProgress(`Розпізнаю текст… ${Math.round(m.progress * 100)}%`);
+    },
+  });
+  try {
+    const { data } = await worker.recognize(image);
+    return data.text;
+  } finally {
+    await worker.terminate();
+  }
 }
 
 async function setAvatar(file) {
@@ -566,7 +618,7 @@ async function renderGroup(groupId) {
     run(supabase.from('groups').select('id, name, currency, invite_token, created_by').eq('id', groupId).maybeSingle()),
     run(supabase.from('group_members').select('profiles (id, name, email, avatar_path)').eq('group_id', groupId).order('id')),
     run(supabase.from('expenses')
-      .select('id, description, amount, paid_by, date, category_id, expense_shares (user_id, amount)')
+      .select('id, description, amount, paid_by, date, category_id, receipt_path, expense_shares (user_id, amount)')
       .eq('group_id', groupId)
       .order('date', { ascending: false })
       .order('id', { ascending: false })),
@@ -585,6 +637,13 @@ async function renderGroup(groupId) {
   if (!group) throw new Error('Групу не знайдено');
 
   const members = memberRows.map((r) => r.profiles);
+  // Квитанції лежать у приватному сховищі — даємо тимчасові посилання на годину.
+  const receiptPaths = expenseRows.map((e) => e.receipt_path).filter(Boolean);
+  const receiptUrls = new Map();
+  if (receiptPaths.length > 0) {
+    const { data } = await supabase.storage.from('receipts').createSignedUrls(receiptPaths, 3600);
+    for (const item of data ?? []) if (item.signedUrl) receiptUrls.set(item.path, item.signedUrl);
+  }
   const expenses = expenseRows.map((e) => ({
     id: e.id,
     description: e.description,
@@ -593,6 +652,8 @@ async function renderGroup(groupId) {
     date: e.date,
     categoryId: e.category_id,
     category: categories.find((c) => c.id === e.category_id) ?? null,
+    receiptPath: e.receipt_path,
+    receiptUrl: receiptUrls.get(e.receipt_path) ?? null,
     edited: history.some((x) => x.action === 'updated' && x.expense_id === e.id),
     shares: e.expense_shares.map((s) => ({ userId: s.user_id, amount: Number(s.amount) })),
   }));
@@ -1046,6 +1107,141 @@ async function renderJoin(token) {
 }
 
 
+/**
+ * Блок «Квитанція» у формі витрати: сфотографувати / вибрати фото, переглянути, розпізнати позиції.
+ * Повертає елемент і стан: нове фото (file), чи прибрали наявне (removed).
+ */
+function receiptField(existingUrl, amountInput, descriptionInput) {
+  const state = { file: null, removed: false };
+  let previewUrl = null;
+
+  const pick = (capture) => {
+    const input = h('input', { type: 'file', accept: 'image/*', capture, hidden: true });
+    input.addEventListener('change', () => {
+      const file = input.files[0];
+      input.remove();
+      if (!file) return;
+      state.file = file;
+      state.removed = false;
+      render();
+    });
+    document.body.append(input); // деякі браузери не відкривають вибір файлу для від'єднаного input
+    input.click();
+  };
+
+  const results = h('div', { class: 'receipt-results' });
+  const box = h('div', { class: 'receipt' });
+
+  function currentImage() {
+    if (state.file) {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      previewUrl = URL.createObjectURL(state.file);
+      return previewUrl;
+    }
+    return state.removed ? null : existingUrl;
+  }
+
+  async function recognize(button) {
+    button.disabled = true;
+    const status = h('p', { class: 'sub' });
+    results.replaceChildren(status);
+    try {
+      const image = state.file ? await scaledJpeg(state.file, 2000) : existingUrl;
+      const text = await recognizeText(image, (msg) => { status.textContent = msg; });
+      showItems(parseReceipt(text));
+    } catch (err) {
+      results.replaceChildren(h('p', { class: 'error' }, err.message));
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  function showItems({ items, total }) {
+    if (items.length === 0) {
+      results.replaceChildren(h('p', { class: 'sub' },
+        total ? `Позицій не знайшов, але підсумок чека — ${formatMoney(total)}. ` : 'Не вдалося знайти позиції з сумами. ',
+        'Спробуйте сфотографувати рівніше, ближче й при кращому світлі.'),
+      total ? h('button', { type: 'button', class: 'secondary', onClick: () => fill(total, '') }, `Підставити ${formatMoney(total)}`) : '');
+      return;
+    }
+    const checks = items.map(() => h('input', { type: 'checkbox', checked: true }));
+    const sumLabel = h('span', { class: 'amount' });
+    const fillButton = h('button', { type: 'button' });
+    const selected = () => items.filter((_, i) => checks[i].checked);
+    const update = () => {
+      const sum = selected().reduce((acc, it) => acc + it.amount, 0);
+      sumLabel.textContent = formatMoney(sum);
+      fillButton.textContent = `Підставити у форму (${formatMoney(sum)})`;
+      fillButton.disabled = sum === 0;
+    };
+    checks.forEach((c) => c.addEventListener('change', update));
+    fillButton.addEventListener('click', () => {
+      const chosen = selected();
+      fill(chosen.reduce((acc, it) => acc + it.amount, 0),
+        chosen.length <= 3 ? chosen.map((it) => it.name).join(', ') : `${chosen.slice(0, 2).map((it) => it.name).join(', ')} та ще ${chosen.length - 2}`);
+    });
+    results.replaceChildren(
+      h('p', { class: 'sub' }, 'Знайдені позиції — зніміть галочки з тих, що не входять у спільну витрату. Перевірте суми: розпізнавання може помилятися.'),
+      h('ul', { class: 'receipt-items' }, items.map((it, i) =>
+        h('li', {}, h('label', {}, checks[i], h('span', {}, it.name)), h('span', { class: 'amount' }, formatMoney(it.amount))))),
+      h('div', { class: 'receipt-sum' },
+        h('span', {}, 'Вибрано'), sumLabel),
+      total !== items.reduce((acc, it) => acc + it.amount, 0) ? h('p', { class: 'sub' }, `Підсумок у чеку: ${formatMoney(total)}`) : '',
+      fillButton,
+    );
+    update();
+  }
+
+  function fill(amount, description) {
+    amountInput.value = formatInput(amount);
+    amountInput.dispatchEvent(new Event('input'));
+    if (description && !descriptionInput.value.trim()) descriptionInput.value = description.slice(0, 200);
+    toast('Суму підставлено — перевірте форму');
+  }
+
+  function render() {
+    const src = currentImage();
+    results.replaceChildren();
+    box.replaceChildren(
+      h('div', { class: 'receipt-head' }, h('span', { class: 'sub' }, 'Квитанція (необов\'язково)')),
+      src
+        ? h('div', { class: 'receipt-preview' },
+          h('a', { href: src, target: '_blank', rel: 'noopener' }, h('img', { src, alt: 'Фото квитанції' })),
+          h('div', { class: 'receipt-actions' },
+            h('button', { type: 'button', onClick: (e) => recognize(e.currentTarget) }, '🔍 Розпізнати суми'),
+            h('button', { type: 'button', class: 'secondary', onClick: () => pick('environment') }, '📷 Інше фото'),
+            h('button', {
+              type: 'button', class: 'secondary',
+              onClick: () => {
+                state.file = null;
+                state.removed = true;
+                render();
+              },
+            }, '✕ Прибрати'),
+          ))
+        : h('div', { class: 'receipt-actions' },
+          h('button', { type: 'button', class: 'secondary', onClick: () => pick('environment') }, '📷 Сфотографувати'),
+          h('button', { type: 'button', class: 'secondary', onClick: () => pick(null) }, '🖼 Вибрати фото'),
+        ),
+      results,
+    );
+  }
+  render();
+  return { el: box, state };
+}
+
+/** Прикріплює до витрати нове фото квитанції або прибирає наявне; старий файл видаляє. */
+async function saveReceipt(groupId, expenseId, state) {
+  if (!state.file && !state.removed) return;
+  let path = null;
+  if (state.file) {
+    path = `${groupId}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.jpg`;
+    await run(supabase.storage.from('receipts').upload(path, await scaledJpeg(state.file), { contentType: 'image/jpeg' }));
+  }
+  const oldPath = await run(supabase.rpc('set_expense_receipt', { expense_id: expenseId, receipt_path: path }));
+  if (oldPath) await supabase.storage.from('receipts').remove([oldPath]);
+}
+
 /** Форма нової витрати; якщо передано editing — редагування цієї витрати. */
 function expenseFormCard(groupId, members, categories, reload, editing = null, onCancel = null) {
   const error = h('div', { class: 'error' });
@@ -1117,10 +1313,14 @@ function expenseFormCard(groupId, members, categories, reload, editing = null, o
     updateShares();
   });
 
+  const descriptionInput = h('input', {
+    name: 'description', required: true, maxLength: 200, placeholder: 'Напр. «Продукти»', value: editing?.description ?? '',
+  });
+  const receipt = receiptField(editing?.receiptUrl ?? null, amountInput, descriptionInput);
+
   const form = h('form', {},
-    h('label', {}, 'Опис', h('input', {
-      name: 'description', required: true, maxLength: 200, placeholder: 'Напр. «Продукти»', value: editing?.description ?? '',
-    })),
+    receipt.el,
+    h('label', {}, 'Опис', descriptionInput),
     h('div', { class: 'row' },
       h('label', {}, 'Сума, ₴', amountInput),
       h('label', {}, 'Дата', h('input', { name: 'date', type: 'date', value: editing?.date ?? today() })),
@@ -1183,12 +1383,14 @@ function expenseFormCard(groupId, members, categories, reload, editing = null, o
       expense_date: data.get('date') || today(),
       category_id: data.get('category') ? Number(data.get('category')) : null,
     };
-    if (editing) {
-      await run(supabase.rpc('update_expense', { expense_id: editing.id, ...fields }));
-      toast('Зміни збережено');
-    } else {
-      await run(supabase.rpc('add_expense', { gid: groupId, ...fields }));
-      toast('Витрату додано');
+    let expenseId = editing?.id;
+    if (editing) await run(supabase.rpc('update_expense', { expense_id: editing.id, ...fields }));
+    else expenseId = await run(supabase.rpc('add_expense', { gid: groupId, ...fields }));
+    try {
+      await saveReceipt(groupId, expenseId, receipt.state);
+      toast(editing ? 'Зміни збережено' : 'Витрату додано');
+    } catch (err) {
+      toast(`Витрату збережено, але фото квитанції — ні: ${err.message}`);
     }
     reload();
   }));
@@ -1254,13 +1456,19 @@ function expensesCard(groupId, expenses, nameOf, reload, onEdit) {
             ),
             h('div', { class: 'actions' },
               h('span', { class: 'amount' }, formatMoney(e.amount)),
+              e.receiptUrl && h('a', { class: 'receipt-link', href: e.receiptUrl, target: '_blank', rel: 'noopener', title: 'Фото квитанції' }, '🧾'),
               h('button', { class: 'link edit', title: 'Редагувати витрату', onClick: () => onEdit(e) }, '✎'),
               h('button', {
                 class: 'link',
                 title: 'Видалити витрату',
                 onClick: async () => {
                   if (!confirm(`Видалити витрату «${e.description}»?`)) return;
-                  await run(supabase.from('expenses').delete().eq('id', e.id)).catch((err) => toast(err.message));
+                  try {
+                    await run(supabase.from('expenses').delete().eq('id', e.id));
+                    if (e.receiptPath) await supabase.storage.from('receipts').remove([e.receiptPath]);
+                  } catch (err) {
+                    toast(err.message);
+                  }
                   reload();
                 },
               }, '✕'),

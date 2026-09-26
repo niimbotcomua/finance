@@ -311,3 +311,31 @@ test('група з витратами видаляється цілком (ра
   await db.query('delete from public.groups where id = $1', [gid]);
   assert.equal((await db.query('select count(*)::int as n from public.expense_history where group_id = $1', [gid])).rows[0].n, 0);
 });
+
+test('фото квитанції: бачать і змінюють лише учасники групи', async () => {
+  const [{ create_group: gid }] = await as('bohdan', 'select public.create_group($1)', ['Квитанції']);
+  await as('bohdan', 'select public.add_group_member($1, $2)', [gid, 'vira@example.com']);
+  const [{ add_expense: eid }] = await as('bohdan',
+    'select public.add_expense(gid => $1, description => $2, amount => 500, paid_by => $3, shares => $4::jsonb)',
+    [gid, 'Кава', users.bohdan, JSON.stringify([{ user_id: users.bohdan, amount: 500 }])]);
+  const path = `${gid}/chek.jpg`;
+  const upload = (who, name) => as(who, "insert into storage.objects (bucket_id, name) values ('receipts', $1)", [name]);
+
+  // Завантажити файл можна лише в папку своєї групи.
+  await upload('vira', path);
+  await rejects(upload('stranger', `${gid}/x.jpg`), 'row-level security');
+  await rejects(upload('vira', 'abc/x.jpg'), 'row-level security');
+  assert.equal((await as('bohdan', "select * from storage.objects where bucket_id = 'receipts'")).length, 1);
+  assert.equal((await as('stranger', "select * from storage.objects where bucket_id = 'receipts'")).length, 0);
+
+  // Прикріпити до витрати: лише учасник і лише файл з папки цієї групи.
+  const setReceipt = (who, p) => as(who, 'select public.set_expense_receipt(expense_id => $1, receipt_path => $2) as old', [eid, p]);
+  await rejects(setReceipt('stranger', path), 'Витрату не знайдено');
+  await rejects(setReceipt('vira', `${gid + 1}/chek.jpg`), 'Некоректний файл');
+  assert.equal((await setReceipt('vira', path))[0].old, null);
+  assert.equal((await as('bohdan', 'select receipt_path from public.expenses where id = $1', [eid]))[0].receipt_path, path);
+  assert.equal((await setReceipt('bohdan', null))[0].old, path);
+
+  // Напряму змінити витрату не можна — лише через функцію.
+  await rejects(as('vira', 'update public.expenses set receipt_path = $1 where id = $2', [path, eid]), 'permission denied');
+});
