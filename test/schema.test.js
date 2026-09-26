@@ -421,3 +421,14 @@ test('валюта за замовчуванням: змінює лише адм
   assert.equal(await current(), 'EUR');
   await as('anna', 'select public.admin_set_default_currency($1)', ['UAH']);
 });
+
+test('дизайн застосунку: перемикає лише адмін', async () => {
+  await db.query('insert into private.admins (user_id) values ($1) on conflict do nothing', [users.anna]);
+  const current = async () => (await as('vira', 'select design from public.app_settings'))[0].design;
+  assert.equal(await current(), 'dark');
+  await rejects(as('bohdan', 'select public.admin_set_design($1)', ['mono']), 'адміністратора');
+  await rejects(as('anna', 'select public.admin_set_design($1)', ['pink']), 'Невідомий дизайн');
+  await as('anna', 'select public.admin_set_design(design => $1)', ['mono']);
+  assert.equal(await current(), 'mono');
+  await as('anna', 'select public.admin_set_design($1)', ['dark']);
+});
