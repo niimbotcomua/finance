@@ -112,7 +112,6 @@ html[data-design="mono"] .card.editing { box-shadow: 0 0 0 2px var(--accent-2); 
 html[data-design="mono"] .bar-fill { background: linear-gradient(90deg, #3f37c9, #4c8df0); }
 html[data-design="mono"] .archive-bar { box-shadow: 0 1px 2px rgb(16 16 40 / 0.04); }
 html[data-design="mono"] .receipt-actions button.secondary { background: #fff; }
-html[data-design="mono"] ul.receipt-items li { background: #fff; }
 html[data-design="mono"] .invite input { background: #fff; }
 html[data-design="mono"] .icon-grid { background: #fff; box-shadow: 0 12px 32px rgb(16 16 40 / 0.16); }
 
@@ -140,3 +139,5 @@ html[data-design="mono"] #toast { background: #0b0b0f; color: #fff; }
 .design-preview-mono { background: linear-gradient(180deg, #5a4fd0, #f2f2f7); }
 .design-preview-mono i { background: #fff; }
 .design-preview-mono i:last-child { background: #0b0b0f; }
+html[data-design="mono"] .carousel-dot { background: #b9b9c2; }
+html[data-design="mono"] .carousel-dot.active { background: var(--text); }
