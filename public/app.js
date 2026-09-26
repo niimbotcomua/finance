@@ -1,7 +1,7 @@
 // Клієнтська частина: невеликий SPA без фреймворків; дані зберігаються в Supabase.
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/+esm';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
-import { computeBalances, remainderShare, simplifyDebts, splitEqually } from './balances.js';
+import { computeBalances, convertAmount, convertShares, remainderShare, simplifyDebts, splitEqually } from './balances.js';
 import { filterByPeriod, summarize } from './analytics.js';
 import { parseReceipt } from './receipt.js';
 
@@ -34,8 +34,39 @@ function h(tag, props = {}, ...children) {
   return el;
 }
 
-const moneyFormat = new Intl.NumberFormat('uk-UA', { style: 'currency', currency: 'UAH' });
-const formatMoney = (kopecks) => moneyFormat.format(kopecks / 100);
+// Основна валюта відкритої групи — у ній показуємо баланси, борги й аналітику.
+let baseCurrency = 'UAH';
+const moneyFormats = new Map();
+function moneyFormat(currency) {
+  if (!moneyFormats.has(currency)) {
+    moneyFormats.set(currency, new Intl.NumberFormat('uk-UA', {
+      style: 'currency', currency, minimumFractionDigits: 2, maximumFractionDigits: 2,
+      currencyDisplay: currency === 'UAH' ? 'symbol' : 'narrowSymbol', // гривня — «грн», решта — «$», «€», «zł»…
+    }));
+  }
+  return moneyFormats.get(currency);
+}
+/** Сума в сотих частках → «1 234,50 грн» (за замовчуванням — в основній валюті групи). */
+const formatMoney = (kopecks, currency = baseCurrency) => moneyFormat(currency).format(kopecks / 100);
+const currencySymbol = (currency) => moneyFormat(currency).formatToParts(0).find((p) => p.type === 'currency')?.value ?? currency;
+
+/** Довідник валют (завантажується один раз). */
+let currencyList = null;
+async function loadCurrencies() {
+  currencyList ??= await run(supabase.from('currencies').select('code, name, flag').order('sort_order'));
+  return currencyList;
+}
+const currencyInfo = (code) => currencyList?.find((c) => c.code === code) ?? { code, name: code, flag: '' };
+const currencyLabel = (code) => `${currencyInfo(code).flag} ${code}`.trim();
+
+/** Курс «41,25» → 41.25; null, якщо некоректно. */
+function parseRate(value) {
+  const normalized = String(value).trim().replace(/\s/g, '').replace(',', '.');
+  if (!/^\d+(\.\d{1,8})?$/.test(normalized)) return null;
+  const rate = Number(normalized);
+  return rate > 0 && rate < 1000000 ? rate : null;
+}
+const formatRate = (rate) => Number(rate).toLocaleString('uk-UA', { maximumFractionDigits: 6 });
 const formatDate = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString('uk-UA');
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -591,9 +622,9 @@ function renderAuth(invite = null) {
 
 // ---------- Список груп ----------
 
-function balanceLabel(balance) {
-  if (balance > 0) return h('span', { class: 'amount pos' }, `вам винні ${formatMoney(balance)}`);
-  if (balance < 0) return h('span', { class: 'amount neg' }, `ви винні ${formatMoney(-balance)}`);
+function balanceLabel(balance, currency = baseCurrency) {
+  if (balance > 0) return h('span', { class: 'amount pos' }, `вам винні ${formatMoney(balance, currency)}`);
+  if (balance < 0) return h('span', { class: 'amount neg' }, `ви винні ${formatMoney(-balance, currency)}`);
   return h('span', { class: 'amount sub' }, 'розраховано');
 }
 
@@ -615,9 +646,11 @@ async function setGroupArchived(groupId, archived) {
 
 /** Список груп: активні (showArchive = false) або архівні. */
 async function renderGroups(showArchive = false) {
-  const allGroups = (await run(supabase.rpc('group_list'))).map((g) => ({
+  const [groupRows, currencies] = await Promise.all([run(supabase.rpc('group_list')), loadCurrencies()]);
+  const allGroups = groupRows.map((g) => ({
     id: g.id,
     name: g.name,
+    currency: g.currency,
     memberCount: Number(g.member_count),
     myBalance: Number(g.my_balance),
     createdAt: g.created_at,
@@ -654,7 +687,7 @@ async function renderGroups(showArchive = false) {
             }
           },
         }, 'Повернути')
-        : balanceLabel(g.myBalance),
+        : balanceLabel(g.myBalance, g.currency),
     );
 
   if (showArchive) {
@@ -673,22 +706,35 @@ async function renderGroups(showArchive = false) {
 
   const error = h('div', { class: 'error' });
   const form = h('form', {},
-    h('div', { class: 'row' },
+    h('div', { class: 'create-group' },
       h('input', { name: 'name', placeholder: 'Напр. «Квартира» або «Відпустка 2026»', required: true, maxLength: 100 }),
+      h('select', { name: 'currency', 'aria-label': 'Основна валюта групи', title: 'Основна валюта групи' },
+        currencies.map((c) => h('option', { value: c.code, selected: c.code === 'UAH' }, `${c.flag} ${c.code}`))),
       h('button', { type: 'submit' }, 'Створити групу'),
     ),
+    h('p', { class: 'sub' }, 'Валюта — основна для групи: у ній рахуються баланси. Витрати можна вносити й в інших валютах за курсом.'),
     error,
   );
   form.addEventListener('submit', submitHandler(form, error, async (data) => {
-    const groupId = await run(supabase.rpc('create_group', { group_name: data.get('name') }));
+    const groupId = await run(supabase.rpc('create_group', { group_name: data.get('name'), group_currency: data.get('currency') }));
     location.hash = `#/groups/${groupId}`;
   }));
 
-  const total = groups.reduce((sum, g) => sum + g.myBalance, 0);
+  // Загальний баланс — окремо для кожної валюти (різні валюти не додаємо).
+  const totals = new Map();
+  for (const g of groups) totals.set(g.currency, (totals.get(g.currency) ?? 0) + g.myBalance);
+  const totalLines = [...totals].filter(([, sum]) => sum !== 0);
 
   mount(
     h('h1', {}, 'Мої групи'),
-    groups.length > 0 && h('div', { class: 'card' }, h('h2', {}, 'Загальний баланс'), balanceLabel(total)),
+    groups.length > 0 && h('div', { class: 'card hero' },
+      h('div', { class: 'hero-label' }, 'Загальний баланс'),
+      totalLines.length === 0
+        ? h('div', { class: 'hero-amount' }, 'усе розраховано ✓')
+        : totalLines.map(([currency, sum]) => h('div', { class: `hero-amount ${sum > 0 ? 'pos' : 'neg'}` },
+          h('span', { class: 'hero-sign' }, sum > 0 ? 'вам винні' : 'ви винні'),
+          formatMoney(Math.abs(sum), currency))),
+    ),
     h('div', { class: 'card' },
       groups.length === 0
         ? h('p', { class: 'empty' }, archivedCount > 0 ? 'Активних груп немає. Створіть нову нижче.' : 'У вас ще немає груп. Створіть першу нижче.')
@@ -701,11 +747,11 @@ async function renderGroups(showArchive = false) {
 // ---------- Сторінка групи ----------
 
 async function renderGroup(groupId) {
-  const [group, memberRows, expenseRows, settlementRows, categories, history] = await Promise.all([
+  const [group, memberRows, expenseRows, settlementRows, categories, history, rateRows] = await Promise.all([
     run(supabase.from('groups').select('id, name, currency, invite_token, created_by').eq('id', groupId).maybeSingle()),
     run(supabase.from('group_members').select('user_id, archived_at, profiles (id, name, email, avatar_path)').eq('group_id', groupId).order('id')),
     run(supabase.from('expenses')
-      .select('id, description, amount, paid_by, date, category_id, receipt_path, expense_shares (user_id, amount)')
+      .select('id, description, amount, paid_by, date, category_id, receipt_path, currency, original_amount, rate, expense_shares (user_id, amount)')
       .eq('group_id', groupId)
       .order('date', { ascending: false })
       .order('id', { ascending: false })),
@@ -720,8 +766,12 @@ async function renderGroup(groupId) {
       .eq('group_id', groupId)
       .order('id', { ascending: false })
       .limit(200)),
+    run(supabase.from('group_rates').select('currency, rate, updated_at').eq('group_id', groupId)),
+    loadCurrencies(),
   ]);
   if (!group) throw new Error('Групу не знайдено');
+  baseCurrency = group.currency;
+  const rates = new Map(rateRows.map((r) => [r.currency, Number(r.rate)]));
 
   const members = memberRows.map((r) => r.profiles);
   // Квитанції лежать у приватному сховищі — даємо тимчасові посилання на годину.
@@ -743,6 +793,9 @@ async function renderGroup(groupId) {
     receiptUrl: receiptUrls.get(e.receipt_path) ?? null,
     edited: history.some((x) => x.action === 'updated' && x.expense_id === e.id),
     shares: e.expense_shares.map((s) => ({ userId: s.user_id, amount: Number(s.amount) })),
+    currency: e.currency,
+    originalAmount: e.original_amount === null ? null : Number(e.original_amount),
+    rate: e.rate === null ? null : Number(e.rate),
   }));
   const settlements = settlementRows.map((s) => ({
     id: s.id, fromUser: s.from_user, toUser: s.to_user, amount: Number(s.amount), date: s.date,
@@ -758,7 +811,7 @@ async function renderGroup(groupId) {
   // Форма витрати: «нова» або редагування вибраної витрати.
   const formSlot = h('div', {});
   const showExpenseForm = (editing = null) => {
-    formSlot.replaceChildren(expenseFormCard(groupId, members, categories, reload, editing, () => showExpenseForm()));
+    formSlot.replaceChildren(expenseFormCard(groupId, members, categories, rates, reload, editing, () => showExpenseForm()));
     if (editing) {
       formSlot.scrollIntoView({ behavior: 'smooth', block: 'start' });
       formSlot.querySelector('input[name=description]').focus({ preventScroll: true });
@@ -776,6 +829,7 @@ async function renderGroup(groupId) {
     },
     settle: { label: '💸 Повернення боргу', render: () => settlementFormCard(groupId, members, reload) },
     members: { label: '👥 Учасники', count: members.length, muted: true, render: () => membersCard(group, members, reload) },
+    rates: { label: '💱 Курси валют', count: rates.size, muted: true, render: () => ratesCard(group, rateRows, reload) },
     analytics: { label: '📊 Аналітика', render: () => analyticsCard(expenses, members, categoryOf) },
     history: { label: '🕘 Історія змін', render: () => historyCard(history, nameOf, categoryOf) },
   };
@@ -1057,6 +1111,104 @@ function balancesCard(balances, profileOf) {
         ),
       ),
     ),
+  );
+}
+
+/** Поточний курс з відкритого набору курсів (оновлюється щодня); повертає «скільки base за 1 code». */
+async function fetchMarketRate(code, base) {
+  const url = `https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/${base.toLowerCase()}.json`;
+  const response = await fetch(url);
+  if (!response.ok) throw new Error('Не вдалося отримати курс');
+  const perBase = (await response.json())?.[base.toLowerCase()]?.[code.toLowerCase()];
+  if (!perBase) throw new Error(`Курс ${code} не знайдено`);
+  return Number((1 / perBase).toFixed(4));
+}
+
+/** Налаштування курсів групи: скільки основної валюти коштує 1 одиниця іншої. */
+function ratesCard(group, rateRows, reload) {
+  const base = group.currency;
+  const baseSymbol = currencySymbol(base);
+  const setRate = (currency, rate) => run(supabase.rpc('set_group_rate', { gid: group.id, currency, rate }));
+
+  const rows = rateRows.map((r) => {
+    const input = h('input', { value: formatRate(r.rate), inputMode: 'decimal', 'aria-label': `Курс ${r.currency}` });
+    const save = h('button', { type: 'button', class: 'secondary', hidden: true }, 'Зберегти');
+    input.addEventListener('input', () => { save.hidden = parseRate(input.value) === Number(r.rate); });
+    save.addEventListener('click', async () => {
+      const rate = parseRate(input.value);
+      if (!rate) return toast('Вкажіть курс, напр. 41,25');
+      save.disabled = true;
+      try {
+        await setRate(r.currency, rate);
+        toast('Курс збережено');
+        reload();
+      } catch (err) {
+        toast(err.message);
+        save.disabled = false;
+      }
+    });
+    return h('li', {},
+      h('span', { class: 'rate-code' }, currencyLabel(r.currency)),
+      h('div', { class: 'rate-row' },
+        h('span', { class: 'sub' }, `1 ${currencySymbol(r.currency)} =`),
+        input,
+        h('span', { class: 'sub' }, baseSymbol),
+        save,
+        h('button', {
+          type: 'button', class: 'link', title: 'Прибрати валюту',
+          onClick: async () => {
+            if (!confirm(`Прибрати ${r.currency}? Уже внесені витрати в цій валюті не зміняться.`)) return;
+            try {
+              await setRate(r.currency, null);
+              reload();
+            } catch (err) {
+              toast(err.message);
+            }
+          },
+        }, '✕'),
+      ),
+    );
+  });
+
+  const used = new Set([base, ...rateRows.map((r) => r.currency)]);
+  const available = currencyList.filter((c) => !used.has(c.code));
+  const error = h('div', { class: 'error' });
+  const currencySelect = h('select', { name: 'currency', 'aria-label': 'Валюта' },
+    available.map((c) => h('option', { value: c.code, title: c.name }, `${c.flag} ${c.code}`)));
+  const rateInput = h('input', { name: 'rate', inputMode: 'decimal', placeholder: 'курс', required: true });
+  const suggest = h('button', { type: 'button', class: 'link suggest' }, '↻ Підставити поточний курс');
+  suggest.addEventListener('click', async () => {
+    error.textContent = '';
+    suggest.disabled = true;
+    try {
+      rateInput.value = formatRate(await fetchMarketRate(currencySelect.value, base));
+    } catch (err) {
+      error.textContent = `${err.message}. Введіть курс вручну.`;
+    } finally {
+      suggest.disabled = false;
+    }
+  });
+  const form = h('form', {},
+    h('div', { class: 'add-rate' }, currencySelect, rateInput, h('button', { type: 'submit' }, 'Додати')),
+    suggest,
+    error,
+  );
+  form.addEventListener('submit', submitHandler(form, error, async (data) => {
+    const rate = parseRate(data.get('rate'));
+    if (!rate) throw new Error('Вкажіть курс, напр. 41,25');
+    await setRate(String(data.get('currency')), rate);
+    toast('Валюту додано');
+    reload();
+  }));
+
+  return h('div', { class: 'card' },
+    h('h2', {}, 'Курси валют'),
+    h('p', { class: 'sub' },
+      `Основна валюта групи — ${currencyLabel(base)} (${currencyInfo(base).name}). У ній рахуються баланси й борги. `
+      + 'Витрату в іншій валюті перераховуємо за курсом на момент додавання; зміна курсу не переписує старі витрати.'),
+    rows.length > 0 ? h('ul', { class: 'list rates' }, rows) : h('p', { class: 'empty' }, 'Інших валют ще немає.'),
+    available.length > 0 && h('h3', {}, 'Додати валюту'),
+    available.length > 0 && form,
   );
 }
 
@@ -1415,14 +1567,29 @@ async function saveReceipt(groupId, expenseId, state) {
 }
 
 /** Форма нової витрати; якщо передано editing — редагування цієї витрати. */
-function expenseFormCard(groupId, members, categories, reload, editing = null, onCancel = null) {
+function expenseFormCard(groupId, members, categories, rates, reload, editing = null, onCancel = null) {
   const error = h('div', { class: 'error' });
 
+  // Валюта витрати: основна або будь-яка з курсом у налаштуваннях групи.
+  // Під час редагування в тій самій валюті лишається курс, збережений у витраті.
+  const currencies = [baseCurrency, ...rates.keys()];
+  if (editing?.currency && !currencies.includes(editing.currency)) currencies.push(editing.currency);
+  const rateFor = (code) => (code === baseCurrency ? 1
+    : code === editing?.currency ? editing.rate : rates.get(code));
+  const currencySelect = h('select', { name: 'currency', 'aria-label': 'Валюта', hidden: currencies.length === 1 },
+    currencies.map((code) => h('option', { value: code, selected: code === (editing?.currency ?? baseCurrency) }, currencyLabel(code))));
+  const cur = () => currencySelect.value;
+
   // Під час редагування: якщо частки — це рівний поділ між тими, хто бере участь, показуємо «Порівну».
-  const shareOf = new Map((editing?.shares ?? []).map((s) => [s.userId, s.amount]));
+  // Частки зберігаються в основній валюті — для витрати в іншій валюті переводимо їх назад.
+  const editShares = editing?.currency
+    ? convertShares(editing.shares, 1 / editing.rate, editing.originalAmount)
+    : editing?.shares ?? [];
+  const shareOf = new Map(editShares.map((s) => [s.userId, s.amount]));
   const participantIds = members.filter((m) => shareOf.get(m.id) > 0).map((m) => m.id);
+  const baseAmounts = (editing?.shares ?? []).map((s) => s.amount);
   const isEqual = !editing || (participantIds.length > 0 && participantIds.length === shareOf.size
-    && splitEqually(editing.amount, participantIds).every((s) => shareOf.get(s.userId) === s.amount));
+    && Math.max(...baseAmounts) - Math.min(...baseAmounts) <= 1);
 
   const splitType = h('select', { name: 'splitType' },
     h('option', { value: 'equal', selected: isEqual }, 'Порівну'),
@@ -1439,8 +1606,21 @@ function expenseFormCard(groupId, members, categories, reload, editing = null, o
 
   // Точні суми: залишок автоматично підставляється в останнє поле, яке користувач не заповнював сам.
   const amountInput = h('input', {
-    name: 'amount', required: true, inputMode: 'decimal', placeholder: '0,00', value: editing ? formatInput(editing.amount) : '',
+    name: 'amount', required: true, inputMode: 'decimal', placeholder: '0,00',
+    value: editing ? formatInput(editing.originalAmount ?? editing.amount) : '',
   });
+  // Підказка з перерахунком в основну валюту.
+  const convertHint = h('div', { class: 'sub convert-hint' });
+  function updateConvertHint() {
+    const code = cur();
+    const amount = parseMoney(amountInput.value);
+    convertHint.hidden = code === baseCurrency;
+    if (convertHint.hidden) return;
+    const rate = rateFor(code);
+    convertHint.textContent = `${amount ? `≈ ${formatMoney(convertAmount(amount, rate))} · ` : ''}`
+      + `1 ${currencySymbol(code)} = ${formatRate(rate)} ${currencySymbol(baseCurrency)}`
+      + (code === editing?.currency ? ' (курс цієї витрати)' : '');
+  }
   const shareInputs = members.map((m) => h('input', {
     name: `share-${m.id}`, inputMode: 'decimal', placeholder: '0,00',
     value: editing && !isEqual && shareOf.get(m.id) ? formatInput(shareOf.get(m.id)) : '',
@@ -1465,15 +1645,23 @@ function expenseFormCard(groupId, members, categories, reload, editing = null, o
     shareHint.className = rest === null || rest === 0 ? 'sub' : 'sub neg';
     shareHint.textContent = rest === null ? 'Спершу вкажіть суму витрати'
       : rest === 0 ? '✓ Усю суму розподілено'
-      : rest > 0 ? `Залишилось розподілити: ${formatMoney(rest)}`
-      : `Частки більші за суму на ${formatMoney(-rest)}`;
+      : rest > 0 ? `Залишилось розподілити: ${formatMoney(rest, cur())}`
+      : `Частки більші за суму на ${formatMoney(-rest, cur())}`;
   }
   shareInputs.forEach((input, i) => input.addEventListener('input', () => {
     if (input.value.trim()) manual.add(i);
     else manual.delete(i);
     updateShares();
   }));
-  amountInput.addEventListener('input', updateShares);
+  amountInput.addEventListener('input', () => {
+    updateShares();
+    updateConvertHint();
+  });
+  currencySelect.addEventListener('change', () => {
+    updateShares();
+    updateConvertHint();
+  });
+  updateConvertHint();
 
   const exactBox = h('div', { class: 'shares', hidden: isEqual },
     members.map((m, i) => h('label', {}, h('span', { class: 'person' }, avatar(m, 'xs'), memberName(m)), shareInputs[i])),
@@ -1494,7 +1682,7 @@ function expenseFormCard(groupId, members, categories, reload, editing = null, o
     receipt.el,
     h('label', {}, 'Опис', descriptionInput),
     h('div', { class: 'row' },
-      h('label', {}, 'Сума, ₴', amountInput),
+      h('label', {}, 'Сума', h('div', { class: 'amount-field' }, amountInput, currencySelect), convertHint),
       h('label', {}, 'Дата', h('input', { name: 'date', type: 'date', value: editing?.date ?? today() })),
     ),
     categories.length > 0 && h('label', {}, 'Тег',
@@ -1527,8 +1715,11 @@ function expenseFormCard(groupId, members, categories, reload, editing = null, o
   if (editing) updateShares();
 
   form.addEventListener('submit', submitHandler(form, error, async (data) => {
-    const amount = parseMoney(data.get('amount'));
-    if (!amount) throw new Error('Вкажіть коректну суму, напр. 150 або 99,90');
+    const original = parseMoney(data.get('amount'));
+    if (!original) throw new Error('Вкажіть коректну суму, напр. 150 або 99,90');
+    const code = cur();
+    const rate = rateFor(code);
+    const amount = convertAmount(original, rate); // в основній валюті
 
     let shares;
     if (data.get('splitType') === 'equal') {
@@ -1545,9 +1736,10 @@ function expenseFormCard(groupId, members, categories, reload, editing = null, o
         shares.push({ userId: m.id, amount: value });
       }
       const total = shares.reduce((s, x) => s + x.amount, 0);
-      if (total !== amount) {
-        throw new Error(`Сума часток (${formatMoney(total)}) не дорівнює сумі витрати (${formatMoney(amount)})`);
+      if (total !== original) {
+        throw new Error(`Сума часток (${formatMoney(total, code)}) не дорівнює сумі витрати (${formatMoney(original, code)})`);
       }
+      if (code !== baseCurrency) shares = convertShares(shares, rate, amount);
     }
 
     const fields = {
@@ -1557,6 +1749,8 @@ function expenseFormCard(groupId, members, categories, reload, editing = null, o
       shares: shares.map((s) => ({ user_id: s.userId, amount: s.amount })),
       expense_date: data.get('date') || today(),
       category_id: data.get('category') ? Number(data.get('category')) : null,
+      expense_currency: code === baseCurrency ? null : code,
+      original_amount: code === baseCurrency ? null : original,
     };
     let expenseId = editing?.id;
     if (editing) await run(supabase.rpc('update_expense', { expense_id: editing.id, ...fields }));
@@ -1588,7 +1782,7 @@ function settlementFormCard(groupId, members, reload) {
       h('label', {}, 'Кому', h('select', { name: 'toUser' }, memberOptions(others[0]?.id))),
     ),
     h('div', { class: 'row' },
-      h('label', {}, 'Сума, ₴', h('input', { name: 'amount', required: true, inputMode: 'decimal', placeholder: '0,00' })),
+      h('label', {}, `Сума, ${currencySymbol(baseCurrency)}`, h('input', { name: 'amount', required: true, inputMode: 'decimal', placeholder: '0,00' })),
       h('label', {}, 'Дата', h('input', { name: 'date', type: 'date', value: today() })),
     ),
     error,
@@ -1632,7 +1826,10 @@ function expensesCard(groupId, expenses, profileOf, reload, onEdit) {
             e.category ? h('span', { class: 'tag' }, categoryLabel(e.category)) : null),
           h('div', { class: 'sub' }, formatDate(e.date)),
         ),
-        h('span', { class: 'amount' }, formatMoney(e.amount)),
+        h('div', { class: 'expense-amount' },
+          h('span', { class: 'amount' }, e.currency ? formatMoney(e.originalAmount, e.currency) : formatMoney(e.amount)),
+          e.currency ? h('div', { class: 'sub' }, `≈ ${formatMoney(e.amount)}`) : null,
+        ),
         h('span', { class: 'chevron', 'aria-hidden': 'true' }, '›'),
       ),
       h('div', { class: 'expense-body' },
@@ -1644,6 +1841,8 @@ function expensesCard(groupId, expenses, profileOf, reload, onEdit) {
           h('span', { class: 'field-label' }, isEqual ? 'Ділили порівну' : 'Ділили точними сумами'),
           h('div', { class: 'pills' }, e.shares.map((s) => personPill(profileOf(s.userId), s.amount))),
         ),
+        e.currency ? h('div', { class: 'sub' },
+          `${currencyLabel(e.currency)} → ${currencyLabel(baseCurrency)}: 1 ${currencySymbol(e.currency)} = ${formatRate(e.rate)} ${currencySymbol(baseCurrency)}`) : null,
         h('div', { class: 'expense-actions' },
           e.edited ? h('span', { class: 'sub' }, 'змінено') : null,
           e.receiptUrl && h('a', { class: 'receipt-link', href: e.receiptUrl, target: '_blank', rel: 'noopener', title: 'Фото квитанції' }, '🧾'),

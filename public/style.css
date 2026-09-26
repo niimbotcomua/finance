@@ -410,3 +410,43 @@ details.expense[open] .chevron { transform: rotate(90deg); color: var(--accent);
 .expense-actions button.link { font-size: 14px; }
 .menu-count.muted { background: rgb(255 255 255 / 0.08); color: var(--muted); }
 
+
+/* Загальний баланс — виділений блок */
+.card.hero {
+  position: relative; overflow: hidden; padding: 22px 22px 24px;
+  background:
+    radial-gradient(120% 140% at 0% 0%, rgb(255 79 109 / 0.28), transparent 55%),
+    radial-gradient(120% 140% at 100% 100%, rgb(120 80 255 / 0.24), transparent 55%),
+    var(--card);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.06);
+}
+.hero-label { color: var(--muted); font-size: 14px; font-weight: 600; margin-bottom: 6px; }
+.hero-amount { font-size: 30px; font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; line-height: 1.25; }
+.hero-sign { display: block; font-size: 14px; font-weight: 600; letter-spacing: 0; opacity: 0.85; }
+.hero-amount + .hero-amount { margin-top: 10px; }
+
+/* Нова група: назва, валюта, кнопка; на телефоні — назва на всю ширину */
+.create-group { display: grid; gap: 10px; grid-template-columns: 1fr 120px auto; }
+@media (max-width: 560px) {
+  .create-group { grid-template-columns: 1fr 1fr; }
+  .create-group input { grid-column: 1 / -1; }
+}
+
+/* Сума + валюта в одному полі */
+.amount-field { display: flex; gap: 6px; }
+.amount-field input { flex: 1; }
+.amount-field select { flex: 0 0 auto; width: 104px; padding-left: 10px; padding-right: 6px; }
+.convert-hint:empty { display: none; }
+.expense-amount { text-align: right; }
+.expense-amount .sub { font-size: 12px; }
+
+/* Курси валют */
+ul.list.rates li { flex-wrap: wrap; }
+.rate-code { font-weight: 600; }
+.rate-row { display: flex; align-items: center; gap: 8px; }
+.rate-row input { width: 110px; padding: 8px 12px; text-align: right; }
+.rate-row button.secondary { padding: 8px 14px; font-size: 14px; }
+button.link.suggest { justify-self: start; color: var(--accent-2); font-size: 14px; padding: 0; }
+button.link.suggest:hover { color: var(--accent); }
+.add-rate { display: grid; gap: 10px; grid-template-columns: 120px 1fr auto; }
+.add-rate button { padding-left: 18px; padding-right: 18px; }

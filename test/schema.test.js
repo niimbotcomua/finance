@@ -367,3 +367,45 @@ test('архів груп: лише розрахована група і лиш�
   await archive('anna', false);
   assert.equal(await archived('anna'), false);
 });
+
+test('валюти: основна валюта групи, курси й витрати в іншій валюті', async () => {
+  assert.ok((await as('anna', 'select code from public.currencies')).length >= 10);
+  await rejects(as('anna', 'select public.create_group($1, $2)', ['X', 'ABC']), 'Невідома валюта');
+  const [{ create_group: gid }] = await as('anna', 'select public.create_group(group_name => $1, group_currency => $2)', ['Польща', 'PLN']);
+  assert.equal((await as('anna', 'select currency from public.groups where id = $1', [gid]))[0].currency, 'PLN');
+  await as('anna', 'select public.add_group_member($1, $2)', [gid, 'bohdan@example.com']);
+
+  const setRate = (who, cur, rate) => as(who, 'select public.set_group_rate(gid => $1, currency => $2, rate => $3)', [gid, cur, rate]);
+  await rejects(setRate('anna', 'PLN', 1), 'основна валюта');
+  await rejects(setRate('stranger', 'EUR', 4.3), 'Групу не знайдено');
+  await rejects(setRate('anna', 'EUR', -1), 'Некоректний курс');
+  await setRate('bohdan', 'EUR', 4.3);
+  await setRate('anna', 'EUR', 4.25);
+  assert.equal(Number((await as('bohdan', 'select rate from public.group_rates where group_id = $1', [gid]))[0].rate), 4.25);
+  assert.equal((await as('stranger', 'select * from public.group_rates')).length, 0);
+  await rejects(as('anna', 'insert into public.group_rates (group_id, currency, rate) values ($1, $2, 1)', [gid, 'USD']), 'permission denied');
+
+  const add = (amount, currency, original) => as('anna',
+    'select public.add_expense(gid => $1, description => $2, amount => $3, paid_by => $4, shares => $5::jsonb, expense_currency => $6, original_amount => $7)',
+    [gid, 'Вечеря', amount, users.anna,
+      JSON.stringify([{ user_id: users.anna, amount: amount - Math.floor(amount / 2) }, { user_id: users.bohdan, amount: Math.floor(amount / 2) }]),
+      currency, original]);
+  // 10 EUR × 4,25 = 42,50 PLN.
+  await rejects(add(5000, 'EUR', 1000), 'Курс валюти змінився');
+  await rejects(add(1000, 'USD', 1000), 'не задано курс');
+  const [{ add_expense: eid }] = await add(4250, 'EUR', 1000);
+  const [row] = await as('bohdan', 'select currency, original_amount, rate, amount from public.expenses where id = $1', [eid]);
+  assert.deepEqual([row.currency, Number(row.original_amount), Number(row.rate), Number(row.amount)], ['EUR', 1000, 4.25, 4250]);
+  // В основній валюті — без курсу.
+  const [{ add_expense: plain }] = await add(300, 'PLN', 300);
+  assert.equal((await as('anna', 'select currency from public.expenses where id = $1', [plain]))[0].currency, null);
+
+  // Редагування в тій самій валюті зберігає старий курс, навіть якщо курс групи змінився.
+  await setRate('anna', 'EUR', 5);
+  const update = (amount, original) => as('anna',
+    'select public.update_expense(expense_id => $1, description => $2, amount => $3, paid_by => $4, shares => $5::jsonb, expense_date => $6, expense_currency => $7, original_amount => $8)',
+    [eid, 'Вечеря', amount, users.anna, JSON.stringify([{ user_id: users.anna, amount }]), '2026-09-01', 'EUR', original]);
+  await update(8500, 2000); // 20 EUR × 4,25
+  assert.equal(Number((await as('anna', 'select rate from public.expenses where id = $1', [eid]))[0].rate), 4.25);
+  await rejects(update(10000, 2000), 'Курс валюти змінився');
+});
