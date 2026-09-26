@@ -1,0 +1,17 @@
+{
+  "name": "finance",
+  "version": "0.1.0",
+  "description": "Веб-застосунок для ведення спільних витрат між користувачами",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "node scripts/serve.js",
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

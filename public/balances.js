@@ -1,0 +1,62 @@
+// Чиста бізнес-логіка розрахунків. Усі суми — цілі числа в копійках.
+
+/** Ділить суму порівну між учасниками; залишок копійок отримують перші учасники. */
+export function splitEqually(amount, userIds) {
+  if (userIds.length === 0) throw new Error('Потрібен хоча б один учасник');
+  const base = Math.floor(amount / userIds.length);
+  let remainder = amount - base * userIds.length;
+  return userIds.map((userId) => {
+    const extra = remainder > 0 ? 1 : 0;
+    remainder -= extra;
+    return { userId, amount: base + extra };
+  });
+}
+
+/**
+ * Рахує чистий баланс кожного учасника.
+ * Додатний баланс — учаснику винні гроші, від'ємний — учасник винен.
+ */
+export function computeBalances(memberIds, expenses, settlements) {
+  const balances = new Map(memberIds.map((id) => [id, 0]));
+  const add = (id, delta) => balances.set(id, (balances.get(id) ?? 0) + delta);
+
+  for (const expense of expenses) {
+    add(expense.paidBy, expense.amount);
+    for (const share of expense.shares) add(share.userId, -share.amount);
+  }
+  for (const s of settlements) {
+    add(s.fromUser, s.amount);
+    add(s.toUser, -s.amount);
+  }
+  return balances;
+}
+
+/**
+ * Спрощує борги: мінімізує кількість переказів, жадібно зводячи
+ * найбільшого боржника з найбільшим кредитором.
+ */
+export function simplifyDebts(balances) {
+  const creditors = [];
+  const debtors = [];
+  for (const [userId, balance] of balances) {
+    if (balance > 0) creditors.push({ userId, amount: balance });
+    else if (balance < 0) debtors.push({ userId, amount: -balance });
+  }
+  const byAmountDesc = (a, b) => b.amount - a.amount || String(a.userId).localeCompare(String(b.userId));
+  creditors.sort(byAmountDesc);
+  debtors.sort(byAmountDesc);
+
+  const transfers = [];
+  let c = 0;
+  let d = 0;
+  while (c < creditors.length && d < debtors.length) {
+    const amount = Math.min(creditors[c].amount, debtors[d].amount);
+    transfers.push({ from: debtors[d].userId, to: creditors[c].userId, amount });
+    creditors[c].amount -= amount;
+    debtors[d].amount -= amount;
+    if (creditors[c].amount === 0) c++;
+    if (debtors[d].amount === 0) d++;
+  }
+  return transfers;
+}
+
