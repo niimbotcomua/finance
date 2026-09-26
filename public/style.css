@@ -593,3 +593,28 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
 }
 .receipt-toggle .chevron { transition: transform 0.15s ease; }
 .receipt.open .receipt-toggle .chevron { transform: rotate(90deg); color: var(--accent); }
+
+/* Список витрат: колонки «Сума» і «Ваша частка» */
+details.expense > summary,
+.expense-cols {
+  display: grid; align-items: center; column-gap: 12px;
+  grid-template-columns: minmax(0, 1fr) max-content max-content 14px;
+}
+/* Однакова ширина колонок у шапці, рядках і підсумку — за найдовшою сумою (--amount-w / --mine-w). */
+.expense-cols > span:nth-child(2), .expense-amount { min-width: var(--amount-w, 88px); }
+.expense-cols > span:nth-child(3), .expense-mine { min-width: var(--mine-w, 80px); }
+.expense-amount .amount, .expense-mine .amount { white-space: nowrap; }
+.expense-cols > span { white-space: nowrap; }
+.expense-cols { padding: 0 0 6px; color: var(--muted); font-size: 12px; font-weight: 600; border-bottom: 1px solid var(--border); }
+.expense-cols > span:nth-child(2), .expense-cols > span:nth-child(3) { text-align: right; }
+.expense-total { padding: 12px 0 0; border-bottom: none; border-top: 1px solid var(--border); color: var(--text); font-size: 15px; }
+.expense-total > span { text-align: right; }
+.expense-total > span:first-child { text-align: left; font-weight: 700; }
+.expense-mine { text-align: right; }
+.expense-mine .sub { font-size: 11px; }
+.amount.mine { color: var(--accent); }
+.expense-amount .amount, .expense-mine .amount, .expense-total .amount { font-size: 15px; }
+@media (max-width: 400px) {
+  details.expense > summary, .expense-cols { column-gap: 8px; grid-template-columns: minmax(0, 1fr) max-content max-content 10px; }
+  .expense-amount .amount, .expense-mine .amount, .expense-total .amount { font-size: 14px; }
+}
