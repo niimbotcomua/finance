@@ -190,3 +190,7 @@ html[data-design="nova"] .export-tile:hover:not(:disabled) { box-shadow: inset 0
 html[data-design="nova"] .file-icon { border-radius: 6px; }
 html[data-design="nova"] .export-arrow { background: var(--card); border-radius: 6px; }
 html[data-design="nova"] button.link.panel-close { border-radius: 6px; box-shadow: inset 0 0 0 1px var(--border); }
+html[data-design="nova"] .receipt:not(.open) { box-shadow: none; background: none; }
+html[data-design="nova"] .receipt-toggle { border-radius: 6px; background: #fff; box-shadow: inset 0 0 0 1px var(--border); text-transform: none; letter-spacing: 0; font-size: 15px; }
+html[data-design="nova"] .receipt.open .receipt-toggle { box-shadow: none; }
+html[data-design="nova"] .receipt-count { border-radius: 4px; }

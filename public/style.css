@@ -575,3 +575,21 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
 .report-card { display: grid; gap: 14px; }
 .report-card > h2 { margin: 0; }
 .report-card > .sub { margin: -8px 0 0; }
+
+/* Фото у формі витрати — згорнутий рядок, розгортається за потреби */
+.receipt:not(.open) { padding: 0; background: none; }
+.receipt-toggle {
+  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+  padding: 12px 14px; border-radius: 14px; background: var(--card-2); color: var(--text); font-weight: 600;
+}
+.receipt.open .receipt-toggle { padding: 0 0 4px; background: none; }
+.receipt-toggle:hover:not(:disabled) { filter: none; }
+.receipt-toggle-icon { font-size: 20px; line-height: 1; }
+.receipt-toggle-text { flex: 1; display: grid; gap: 1px; min-width: 0; }
+.receipt-toggle-text .sub { font-weight: 400; font-size: 12px; }
+.receipt-count {
+  min-width: 22px; height: 22px; padding: 0 6px; border-radius: 999px; display: grid; place-items: center;
+  background: var(--accent); color: #fff; font-size: 12px; font-weight: 700;
+}
+.receipt-toggle .chevron { transition: transform 0.15s ease; }
+.receipt.open .receipt-toggle .chevron { transform: rotate(90deg); color: var(--accent); }

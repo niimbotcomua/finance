@@ -2006,6 +2006,7 @@ function receiptField(existingUrls) {
         free[i].file = file;
         free[i].removed = false;
       });
+      open = true;
       render();
     });
     document.body.append(input); // деякі браузери не відкривають вибір файлу для від'єднаного input
@@ -2022,10 +2023,27 @@ function receiptField(existingUrls) {
     return slot.url;
   }
 
+  // Блок згорнутий: відкривається натиском на рядок «📷 Фото», коли фото справді потрібні.
+  let open = false;
   function render() {
     const filled = slots.filter(hasPhoto);
+    const toggle = h('button', {
+      type: 'button', class: 'receipt-toggle', 'aria-expanded': String(open),
+      onClick: () => { open = !open; render(); },
+    },
+    h('span', { class: 'receipt-toggle-icon', 'aria-hidden': 'true' }, '📷'),
+    h('span', { class: 'receipt-toggle-text' },
+      h('span', {}, 'Фото чека чи покупки'),
+      h('span', { class: 'sub' }, filled.length > 0 ? `прикріплено: ${filled.length} з ${MAX_PHOTOS}` : `необов'язково, до ${MAX_PHOTOS}`)),
+    filled.length > 0 ? h('span', { class: 'receipt-count' }, String(filled.length)) : null,
+    h('span', { class: 'chevron', 'aria-hidden': 'true' }, '›'));
+    box.classList.toggle('open', open);
+    if (!open) {
+      box.replaceChildren(toggle);
+      return;
+    }
     const parts = [
-      h('div', { class: 'receipt-head' }, h('span', { class: 'sub' }, `Фото чека чи покупки (до ${MAX_PHOTOS}, необов'язково)`)),
+      toggle,
       filled.length > 0 && photoCarousel(filled.map((slot) => ({
         src: imageOf(slot),
         onRemove: () => {
