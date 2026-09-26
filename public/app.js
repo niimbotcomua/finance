@@ -1,7 +1,7 @@
 // Клієнтська частина: невеликий SPA без фреймворків; дані зберігаються в Supabase.
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/+esm';
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
-import { computeBalances, simplifyDebts, splitEqually } from './balances.js';
+import { computeBalances, remainderShare, simplifyDebts, splitEqually } from './balances.js';
 
 const configured = SUPABASE_URL.startsWith('https://') && !SUPABASE_ANON_KEY.includes('ВСТАВТЕ');
 const supabase = configured ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
@@ -43,6 +43,20 @@ function parseMoney(value) {
   const [whole, frac = ''] = normalized.split('.');
   return Number(whole) * 100 + Number(frac.padEnd(2, '0'));
 }
+
+/** 3050 копійок → "30,50" (3000 → "30") — для підстановки в поле вводу. */
+const formatInput = (kopecks) => (kopecks / 100).toFixed(2).replace('.', ',').replace(/,00$/, '');
+
+const avatarUrl = (path) => supabase.storage.from('avatars').getPublicUrl(path).data.publicUrl;
+
+/** Кружечок з фото профілю або першою літерою імені. */
+function avatar(profile, size = 'sm') {
+  const cls = `avatar avatar-${size}`;
+  if (profile?.avatar_path) return h('img', { class: cls, src: avatarUrl(profile.avatar_path), alt: '' });
+  return h('span', { class: cls, 'aria-hidden': 'true' }, (profile?.name ?? '?').trim().charAt(0).toUpperCase() || '?');
+}
+
+const categoryLabel = (c) => (c.icon ? `${c.icon} ${c.name}` : c.name);
 
 /** Замінює вміст #app, пропускаючи порожні (null/false) вузли. */
 function mount(...nodes) {
@@ -96,8 +110,11 @@ const inviteLink = (token) => `${location.origin}${location.pathname}#/join/${to
 async function loadCurrentUser() {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return null;
-  const profile = await run(supabase.from('profiles').select('id, name, email').eq('id', session.user.id).maybeSingle());
-  return profile ?? { id: session.user.id, email: session.user.email, name: session.user.email };
+  const [profile, isAdmin] = await Promise.all([
+    run(supabase.from('profiles').select('id, name, email, avatar_path').eq('id', session.user.id).maybeSingle()),
+    run(supabase.rpc('am_i_admin')).catch(() => false),
+  ]);
+  return { ...(profile ?? { id: session.user.id, email: session.user.email, name: session.user.email }), isAdmin };
 }
 
 /** Обробник форми з блокуванням кнопки та показом помилки. */
@@ -122,8 +139,9 @@ function submitHandler(form, errorEl, action) {
 function renderUserbox() {
   userbox.replaceChildren();
   if (!currentUser) return;
+  if (currentUser.isAdmin) userbox.append(h('a', { href: '#/admin', class: 'admin-link' }, 'Адмінка'));
   userbox.append(
-    h('span', {}, currentUser.name),
+    h('a', { href: '#/profile', class: 'me', title: 'Мій профіль' }, avatar(currentUser), h('span', { class: 'me-name' }, currentUser.name)),
     h('button', {
       class: 'secondary',
       onClick: async () => {
@@ -133,6 +151,210 @@ function renderUserbox() {
         location.hash = '#/login';
       },
     }, 'Вийти'),
+  );
+}
+
+// ---------- Мій профіль ----------
+
+/** Обрізає фото до квадрата 256×256 і стискає в JPEG — щоб завантаження було швидким. */
+async function squareJpeg(file, size = 256) {
+  let bitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    throw new Error('Не вдалося відкрити фото. Спробуйте файл JPG або PNG.');
+  }
+  const side = Math.min(bitmap.width, bitmap.height);
+  const canvas = h('canvas', { width: size, height: size });
+  canvas.getContext('2d').drawImage(
+    bitmap, (bitmap.width - side) / 2, (bitmap.height - side) / 2, side, side, 0, 0, size, size,
+  );
+  return new Promise((resolve, reject) =>
+    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('Не вдалося обробити фото'))), 'image/jpeg', 0.85));
+}
+
+async function setAvatar(file) {
+  const oldPath = currentUser.avatar_path;
+  let newPath = null;
+  if (file) {
+    newPath = `${currentUser.id}/${Date.now()}.jpg`;
+    await run(supabase.storage.from('avatars').upload(newPath, await squareJpeg(file), { contentType: 'image/jpeg' }));
+  }
+  await run(supabase.from('profiles').update({ avatar_path: newPath }).eq('id', currentUser.id));
+  if (oldPath) await supabase.storage.from('avatars').remove([oldPath]); // старе фото більше не потрібне
+  currentUser.avatar_path = newPath;
+  renderUserbox();
+}
+
+function renderProfile() {
+  const photoError = h('div', { class: 'error' });
+  const fileInput = h('input', { type: 'file', accept: 'image/*', hidden: true });
+  const photoButtons = h('div', { class: 'actions' });
+
+  const busy = async (button, action) => {
+    photoError.textContent = '';
+    button.disabled = true;
+    try {
+      await action();
+      renderProfile();
+    } catch (err) {
+      photoError.textContent = err.message;
+      button.disabled = false;
+    }
+  };
+  const uploadButton = h('button', { type: 'button', onClick: () => fileInput.click() },
+    currentUser.avatar_path ? 'Змінити фото' : 'Завантажити фото');
+  fileInput.addEventListener('change', () => {
+    const [file] = fileInput.files;
+    if (file) busy(uploadButton, async () => { await setAvatar(file); toast('Фото оновлено'); });
+  });
+  photoButtons.append(uploadButton);
+  if (currentUser.avatar_path) {
+    const removeButton = h('button', {
+      type: 'button',
+      class: 'secondary',
+      onClick: () => {
+        if (confirm('Видалити фото профілю?')) busy(removeButton, () => setAvatar(null));
+      },
+    }, 'Видалити фото');
+    photoButtons.append(removeButton);
+  }
+
+  const nameError = h('div', { class: 'error' });
+  const nameForm = h('form', {},
+    h('label', {}, "Ім'я", h('input', { name: 'name', value: currentUser.name, required: true, maxLength: 80 })),
+    h('label', {}, 'Email', h('input', { value: currentUser.email, readOnly: true, disabled: true })),
+    nameError,
+    h('button', { type: 'submit' }, 'Зберегти'),
+  );
+  nameForm.addEventListener('submit', submitHandler(nameForm, nameError, async (data) => {
+    const name = String(data.get('name')).trim();
+    if (!name) throw new Error("Вкажіть ім'я");
+    await run(supabase.from('profiles').update({ name }).eq('id', currentUser.id));
+    currentUser.name = name;
+    renderUserbox();
+    toast("Ім'я збережено");
+  }));
+
+  mount(
+    h('p', {}, h('a', { href: '#/' }, '← Усі групи')),
+    h('h1', {}, 'Мій профіль'),
+    h('div', { class: 'card profile-photo' },
+      avatar(currentUser, 'lg'),
+      h('div', {},
+        h('h2', {}, 'Фото'),
+        h('p', { class: 'sub' }, 'Його бачать учасники ваших груп.'),
+        photoButtons,
+        fileInput,
+        photoError,
+      ),
+    ),
+    h('div', { class: 'card' }, h('h2', {}, 'Дані'), nameForm),
+  );
+}
+
+// ---------- Адмінка ----------
+
+async function renderAdmin() {
+  if (!currentUser.isAdmin) throw new Error('Цей розділ доступний лише адміністратору');
+  const [categories, users] = await Promise.all([
+    run(supabase.from('categories').select('id, name, icon').order('id')),
+    run(supabase.rpc('admin_users')),
+  ]);
+  const reload = () => renderAdmin().catch((err) => toast(err.message));
+
+  const addError = h('div', { class: 'error' });
+  const addForm = h('form', {},
+    h('div', { class: 'row tag-row' },
+      h('input', { name: 'icon', placeholder: '🙂', maxLength: 8, 'aria-label': 'Значок', class: 'icon-input' }),
+      h('input', { name: 'name', placeholder: 'Назва тегу, напр. «Спорт»', required: true, maxLength: 40 }),
+      h('button', { type: 'submit' }, 'Додати'),
+    ),
+    addError,
+  );
+  addForm.addEventListener('submit', submitHandler(addForm, addError, async (data) => {
+    await run(supabase.from('categories').insert({
+      name: String(data.get('name')).trim(),
+      icon: String(data.get('icon')).trim(),
+    }));
+    toast('Тег додано');
+    reload();
+  }));
+
+  const tagRow = (c) => {
+    const error = h('div', { class: 'error' });
+    const form = h('form', {},
+      h('div', { class: 'row tag-row' },
+        h('input', { name: 'icon', value: c.icon, maxLength: 8, 'aria-label': 'Значок', class: 'icon-input' }),
+        h('input', { name: 'name', value: c.name, required: true, maxLength: 40, 'aria-label': 'Назва' }),
+        h('div', { class: 'actions' },
+          h('button', { type: 'submit', class: 'secondary' }, 'Зберегти'),
+          h('button', {
+            type: 'button',
+            class: 'link',
+            title: 'Видалити тег',
+            onClick: async () => {
+              if (!confirm(`Видалити тег «${c.name}»? Витрати з ним залишаться, але без тегу.`)) return;
+              try {
+                await run(supabase.from('categories').delete().eq('id', c.id));
+                reload();
+              } catch (err) {
+                error.textContent = err.message;
+              }
+            },
+          }, '✕'),
+        ),
+      ),
+      error,
+    );
+    form.addEventListener('submit', submitHandler(form, error, async (data) => {
+      await run(supabase.from('categories').update({
+        name: String(data.get('name')).trim(),
+        icon: String(data.get('icon')).trim(),
+      }).eq('id', c.id));
+      toast('Збережено');
+    }));
+    return h('li', {}, form);
+  };
+
+  const userRow = (u) => h('li', {},
+    h('div', { class: 'person' },
+      avatar(u),
+      h('div', {},
+        h('div', {}, u.name, u.is_admin ? h('span', { class: 'badge' }, 'адмін') : null),
+        h('div', { class: 'sub' },
+          `${u.email} · з ${new Date(u.created_at).toLocaleDateString('uk-UA')} · груп: ${u.group_count} · витрат: ${u.expense_count}`),
+      ),
+    ),
+    u.id !== currentUser.id && h('button', {
+      class: 'secondary',
+      onClick: async () => {
+        const question = u.is_admin ? `Забрати в ${u.name} права адміністратора?` : `Зробити ${u.name} адміністратором?`;
+        if (!confirm(question)) return;
+        try {
+          await run(supabase.rpc('admin_set_admin', { target: u.id, make_admin: !u.is_admin }));
+          reload();
+        } catch (err) {
+          toast(err.message);
+        }
+      },
+    }, u.is_admin ? 'Забрати адміна' : 'Зробити адміном'),
+  );
+
+  mount(
+    h('p', {}, h('a', { href: '#/' }, '← Усі групи')),
+    h('h1', {}, 'Адмінка'),
+    h('div', { class: 'card' },
+      h('h2', {}, `Теги витрат (${categories.length})`),
+      h('p', { class: 'sub' }, 'Спільні для всіх груп. Значок — будь-який емодзі (необов\'язково).'),
+      h('ul', { class: 'list tags' }, categories.map(tagRow)),
+      h('h3', {}, 'Новий тег'),
+      addForm,
+    ),
+    h('div', { class: 'card' },
+      h('h2', {}, `Користувачі (${users.length})`),
+      h('ul', { class: 'list' }, users.map(userRow)),
+    ),
   );
 }
 
@@ -264,11 +486,11 @@ async function renderGroups() {
 // ---------- Сторінка групи ----------
 
 async function renderGroup(groupId) {
-  const [group, memberRows, expenseRows, settlementRows] = await Promise.all([
-    run(supabase.from('groups').select('id, name, currency, invite_token').eq('id', groupId).maybeSingle()),
-    run(supabase.from('group_members').select('profiles (id, name, email)').eq('group_id', groupId).order('id')),
+  const [group, memberRows, expenseRows, settlementRows, categories] = await Promise.all([
+    run(supabase.from('groups').select('id, name, currency, invite_token, created_by').eq('id', groupId).maybeSingle()),
+    run(supabase.from('group_members').select('profiles (id, name, email, avatar_path)').eq('group_id', groupId).order('id')),
     run(supabase.from('expenses')
-      .select('id, description, amount, paid_by, date, expense_shares (user_id, amount)')
+      .select('id, description, amount, paid_by, date, category_id, expense_shares (user_id, amount)')
       .eq('group_id', groupId)
       .order('date', { ascending: false })
       .order('id', { ascending: false })),
@@ -277,6 +499,7 @@ async function renderGroup(groupId) {
       .eq('group_id', groupId)
       .order('date', { ascending: false })
       .order('id', { ascending: false })),
+    run(supabase.from('categories').select('id, name, icon').order('id')),
   ]);
   if (!group) throw new Error('Групу не знайдено');
 
@@ -287,6 +510,7 @@ async function renderGroup(groupId) {
     amount: Number(e.amount),
     paidBy: e.paid_by,
     date: e.date,
+    category: categories.find((c) => c.id === e.category_id) ?? null,
     shares: e.expense_shares.map((s) => ({ userId: s.user_id, amount: Number(s.amount) })),
   }));
   const settlements = settlementRows.map((s) => ({
@@ -300,7 +524,7 @@ async function renderGroup(groupId) {
 
   mount(
     h('p', {}, h('a', { href: '#/' }, '← Усі групи')),
-    h('h1', {}, group.name),
+    groupTitle(group, reload),
     h('div', { class: 'grid' },
       h('div', {},
         balancesCard(balances, nameOf),
@@ -308,13 +532,49 @@ async function renderGroup(groupId) {
         membersCard(group, members, reload),
       ),
       h('div', {},
-        expenseFormCard(groupId, members, reload),
+        expenseFormCard(groupId, members, categories, reload),
         settlementFormCard(groupId, members, reload),
       ),
     ),
     expensesCard(groupId, expenses, nameOf, reload),
     settlementsCard(groupId, settlements, nameOf, reload),
   );
+}
+
+/** Назва групи; автор може її змінити (кнопка ✎). */
+function groupTitle(group, reload) {
+  const title = h('div', { class: 'title-row' }, h('h1', {}, group.name));
+  if (group.created_by !== currentUser.id) return title;
+
+  const error = h('div', { class: 'error' });
+  const form = h('form', { class: 'rename' },
+    h('div', { class: 'row' },
+      h('input', { name: 'name', value: group.name, required: true, maxLength: 100, 'aria-label': 'Назва групи' }),
+      h('div', { class: 'actions' },
+        h('button', { type: 'submit' }, 'Зберегти'),
+        h('button', { type: 'button', class: 'secondary', onClick: () => form.replaceWith(title) }, 'Скасувати'),
+      ),
+    ),
+    error,
+  );
+  form.addEventListener('submit', submitHandler(form, error, async (data) => {
+    const name = String(data.get('name')).trim();
+    if (!name) throw new Error('Вкажіть назву');
+    const updated = await run(supabase.from('groups').update({ name }).eq('id', group.id).select('id'));
+    if (updated.length === 0) throw new Error('Змінити назву може лише автор групи');
+    toast('Назву змінено');
+    reload();
+  }));
+
+  title.append(h('button', {
+    class: 'link',
+    title: 'Змінити назву групи',
+    onClick: () => {
+      title.replaceWith(form);
+      form.querySelector('input').focus();
+    },
+  }, '✎'));
+  return title;
 }
 
 function balancesCard(balances, nameOf) {
@@ -386,7 +646,13 @@ function membersCard(group, members, reload) {
     h('ul', { class: 'list' },
       members.map((m) =>
         h('li', {},
-          h('div', {}, m.name, h('div', { class: 'sub' }, m.email)),
+          h('div', { class: 'person' },
+            avatar(m),
+            h('div', {},
+              h('div', {}, m.name, m.id === group.created_by ? h('span', { class: 'badge' }, 'автор') : null),
+              h('div', { class: 'sub' }, m.email),
+            ),
+          ),
           m.id !== currentUser.id &&
             h('button', {
               class: 'link',
@@ -523,7 +789,7 @@ async function renderJoin(token) {
 }
 
 
-function expenseFormCard(groupId, members, reload) {
+function expenseFormCard(groupId, members, categories, reload) {
   const error = h('div', { class: 'error' });
   const splitType = h('select', { name: 'splitType' },
     h('option', { value: 'equal' }, 'Порівну'),
@@ -534,21 +800,60 @@ function expenseFormCard(groupId, members, reload) {
       h('label', {}, h('input', { type: 'checkbox', name: 'participant', value: String(m.id), checked: true }), m.name),
     ),
   );
+
+  // Точні суми: залишок автоматично підставляється в останнє поле, яке користувач не заповнював сам.
+  const amountInput = h('input', { name: 'amount', required: true, inputMode: 'decimal', placeholder: '0,00' });
+  const shareInputs = members.map((m) => h('input', { name: `share-${m.id}`, inputMode: 'decimal', placeholder: '0,00' }));
+  const manual = new Set();
+  const shareHint = h('div', { class: 'sub' });
+  function updateShares() {
+    const amount = parseMoney(amountInput.value);
+    const entries = shareInputs.map((input, i) => ({ manual: manual.has(i), value: parseMoney(input.value) }));
+    shareInputs.forEach((input, i) => {
+      if (manual.has(i)) return;
+      input.value = '';
+      input.classList.remove('auto');
+    });
+    const auto = remainderShare(amount, entries);
+    if (auto && auto.value !== null) {
+      shareInputs[auto.index].value = formatInput(auto.value);
+      shareInputs[auto.index].classList.add('auto');
+    }
+    const rest = amount === null ? null : amount - shareInputs.reduce((sum, input) => sum + (parseMoney(input.value) ?? 0), 0);
+    shareHint.className = rest === null || rest === 0 ? 'sub' : 'sub neg';
+    shareHint.textContent = rest === null ? 'Спершу вкажіть суму витрати'
+      : rest === 0 ? '✓ Усю суму розподілено'
+      : rest > 0 ? `Залишилось розподілити: ${formatMoney(rest)}`
+      : `Частки більші за суму на ${formatMoney(-rest)}`;
+  }
+  shareInputs.forEach((input, i) => input.addEventListener('input', () => {
+    if (input.value.trim()) manual.add(i);
+    else manual.delete(i);
+    updateShares();
+  }));
+  amountInput.addEventListener('input', updateShares);
+
   const exactBox = h('div', { class: 'shares', hidden: true },
-    members.map((m) =>
-      h('label', {}, m.name, h('input', { name: `share-${m.id}`, inputMode: 'decimal', placeholder: '0,00' })),
-    ),
+    members.map((m, i) => h('label', {}, m.name, shareInputs[i])),
+    shareHint,
   );
   splitType.addEventListener('change', () => {
     equalBox.hidden = splitType.value !== 'equal';
     exactBox.hidden = splitType.value !== 'exact';
+    updateShares();
   });
 
   const form = h('form', {},
     h('label', {}, 'Опис', h('input', { name: 'description', required: true, maxLength: 200, placeholder: 'Напр. «Продукти»' })),
     h('div', { class: 'row' },
-      h('label', {}, 'Сума, ₴', h('input', { name: 'amount', required: true, inputMode: 'decimal', placeholder: '0,00' })),
+      h('label', {}, 'Сума, ₴', amountInput),
       h('label', {}, 'Дата', h('input', { name: 'date', type: 'date', value: today() })),
+    ),
+    categories.length > 0 && h('label', {}, 'Тег',
+      h('select', { name: 'category' },
+        h('option', { value: '' }, 'Без тегу'),
+        categories.map((c) => h('option', { value: String(c.id) }, categoryLabel(c))),
+      ),
     ),
     h('div', { class: 'row' },
       h('label', {}, 'Хто платив',
@@ -595,6 +900,7 @@ function expenseFormCard(groupId, members, reload) {
       paid_by: String(data.get('paidBy')),
       shares: shares.map((s) => ({ user_id: s.userId, amount: s.amount })),
       expense_date: data.get('date') || today(),
+      category_id: data.get('category') ? Number(data.get('category')) : null,
     }));
     toast('Витрату додано');
     reload();
@@ -651,7 +957,7 @@ function expensesCard(groupId, expenses, nameOf, reload) {
           const shareText = e.shares.map((s) => `${nameOf(s.userId)} ${formatMoney(s.amount)}`).join(', ');
           return h('li', {},
             h('div', {},
-              h('div', {}, e.description),
+              h('div', {}, e.description, e.category ? h('span', { class: 'tag' }, categoryLabel(e.category)) : null),
               h('div', { class: 'sub' }, `${formatDate(e.date)} · платив(ла) ${nameOf(e.paidBy)} · ${shareText}`),
             ),
             h('div', { class: 'actions' },
@@ -731,7 +1037,9 @@ async function route() {
       return;
     }
     const groupMatch = hash.match(/^#\/groups\/(\d+)$/);
-    if (groupMatch) await renderGroup(Number(groupMatch[1]));
+    if (hash === '#/profile') renderProfile();
+    else if (hash === '#/admin') await renderAdmin();
+    else if (groupMatch) await renderGroup(Number(groupMatch[1]));
     else await renderGroups();
   } catch (err) {
     mount(

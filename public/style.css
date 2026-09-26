@@ -133,6 +133,49 @@ h3 { font-size: 15px; margin: 0 0 4px; }
 }
 .invite .row { align-items: center; margin: 8px 0 6px; }
 .invite input { flex: 1 1 200px; font-size: 13px; color: var(--muted); }
+/* Аватари */
+.avatar {
+  display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
+  border-radius: 50%; object-fit: cover; overflow: hidden;
+  background: color-mix(in srgb, var(--accent) 18%, var(--card)); color: var(--accent); font-weight: 700;
+}
+.avatar-sm { width: 32px; height: 32px; font-size: 14px; }
+.avatar-lg { width: 96px; height: 96px; font-size: 38px; }
+.person { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.me { display: flex; align-items: center; gap: 8px; color: var(--text); }
+.admin-link { font-weight: 600; }
+@media (max-width: 480px) { .me-name { display: none; } }
+.profile-photo { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.profile-photo .actions { flex-wrap: wrap; margin-bottom: 6px; }
+
+.badge {
+  margin-left: 6px; padding: 1px 7px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent);
+}
+.tag {
+  margin-left: 8px; padding: 1px 8px; border-radius: 999px; font-size: 12px; white-space: nowrap;
+  border: 1px solid var(--border); color: var(--muted);
+}
+
+/* Назва групи */
+.title-row { display: flex; align-items: center; gap: 6px; margin-bottom: 16px; }
+.title-row h1 { margin: 0; }
+.title-row button.link { font-size: 20px; }
+.title-row button.link:hover { color: var(--accent); }
+form.rename { margin-bottom: 16px; }
+form.rename input { font-size: 18px; font-weight: 600; }
+
+/* Автопідставлений залишок */
+.shares input.auto { background: color-mix(in srgb, var(--accent) 8%, var(--card)); }
+
+/* Адмінка */
+ul.tags li { display: block; padding: 6px 0; }
+ul.tags form { gap: 4px; }
+ul.tags .error:empty { display: none; }
+.tag-row { align-items: center; flex-wrap: nowrap; }
+.tag-row > input:not(.icon-input) { flex: 1 1 auto; }
+.icon-input { flex: 0 0 56px !important; width: 56px; text-align: center; }
+
 .invite-banner {
   padding: 10px 12px;
   border-radius: 8px;
