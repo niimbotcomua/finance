@@ -409,3 +409,15 @@ test('валюти: основна валюта групи, курси й вит
   assert.equal(Number((await as('anna', 'select rate from public.expenses where id = $1', [eid]))[0].rate), 4.25);
   await rejects(update(10000, 2000), 'Курс валюти змінився');
 });
+
+test('валюта за замовчуванням: змінює лише адмін', async () => {
+  await db.query('insert into private.admins (user_id) values ($1) on conflict do nothing', [users.anna]);
+  const current = async () => (await as('bohdan', 'select default_currency from public.app_settings'))[0].default_currency;
+  assert.equal(await current(), 'UAH');
+  await rejects(as('bohdan', 'select public.admin_set_default_currency($1)', ['EUR']), 'адміністратора');
+  await rejects(as('anna', 'select public.admin_set_default_currency($1)', ['XXX']), 'Невідома валюта');
+  await rejects(as('anna', 'update public.app_settings set default_currency = $1', ['EUR']), 'permission denied');
+  await as('anna', 'select public.admin_set_default_currency(currency => $1)', ['EUR']);
+  assert.equal(await current(), 'EUR');
+  await as('anna', 'select public.admin_set_default_currency($1)', ['UAH']);
+});

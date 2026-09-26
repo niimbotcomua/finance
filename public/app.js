@@ -421,9 +421,11 @@ document.addEventListener('click', (e) => {
 
 async function renderAdmin() {
   if (!currentUser.isAdmin) throw new Error('Цей розділ доступний лише адміністратору');
-  const [categories, users] = await Promise.all([
+  const [categories, users, currencies, settings] = await Promise.all([
     run(supabase.from('categories').select('id, name, icon, sort_order').order('sort_order').order('id')),
     run(supabase.rpc('admin_users')),
+    loadCurrencies(),
+    run(supabase.from('app_settings').select('default_currency').maybeSingle()),
   ]);
   const reload = () => renderAdmin().catch((err) => toast(err.message));
 
@@ -460,7 +462,7 @@ async function renderAdmin() {
 
   const tagRow = (c, index) => {
     const error = h('div', { class: 'error' });
-    const saveButton = h('button', { type: 'submit', class: 'secondary' }, 'Зберегти');
+    const saveButton = h('button', { type: 'submit', class: 'secondary save-tag', title: 'Зберегти', 'aria-label': 'Зберегти' }, '✓');
     const form = h('form', {},
       h('div', { class: 'row tag-row' },
         h('div', { class: 'order' },
@@ -530,9 +532,29 @@ async function renderAdmin() {
     }, u.is_admin ? 'Забрати адміна' : 'Зробити адміном'),
   );
 
+  // Валюта, яку форма «Нова група» пропонує першою.
+  const currencyError = h('div', { class: 'error' });
+  const currencyForm = h('form', {},
+    h('div', { class: 'inline-form' },
+      h('select', { name: 'currency', 'aria-label': 'Валюта за замовчуванням' },
+        currencies.map((c) => h('option', { value: c.code, selected: c.code === settings?.default_currency }, `${c.flag} ${c.code} — ${c.name}`))),
+      h('button', { type: 'submit' }, 'Зберегти'),
+    ),
+    currencyError,
+  );
+  currencyForm.addEventListener('submit', submitHandler(currencyForm, currencyError, async (data) => {
+    await run(supabase.rpc('admin_set_default_currency', { currency: data.get('currency') }));
+    toast('Валюту за замовчуванням збережено');
+  }));
+
   mount(
     h('p', {}, h('a', { href: '#/' }, '← Усі групи')),
     h('h1', {}, 'Адмінка'),
+    h('div', { class: 'card' },
+      h('h2', {}, 'Валюта за замовчуванням'),
+      h('p', { class: 'sub' }, 'Її першою пропонує форма «Нова група». Уже створені групи не змінюються.'),
+      currencyForm,
+    ),
     h('div', { class: 'card' },
       h('h2', {}, `Теги витрат (${categories.length})`),
       h('p', { class: 'sub' }, 'Спільні для всіх груп. Порядок тут — такий самий у списку вибору тегу. Натисніть на значок, щоб змінити його.'),
@@ -646,7 +668,12 @@ async function setGroupArchived(groupId, archived) {
 
 /** Список груп: активні (showArchive = false) або архівні. */
 async function renderGroups(showArchive = false) {
-  const [groupRows, currencies] = await Promise.all([run(supabase.rpc('group_list')), loadCurrencies()]);
+  const [groupRows, currencies, settings] = await Promise.all([
+    run(supabase.rpc('group_list')),
+    loadCurrencies(),
+    run(supabase.from('app_settings').select('default_currency').maybeSingle()).catch(() => null),
+  ]);
+  const defaultCurrency = settings?.default_currency ?? 'UAH';
   const allGroups = groupRows.map((g) => ({
     id: g.id,
     name: g.name,
@@ -709,7 +736,7 @@ async function renderGroups(showArchive = false) {
     h('div', { class: 'create-group' },
       h('input', { name: 'name', placeholder: 'Напр. «Квартира» або «Відпустка 2026»', required: true, maxLength: 100 }),
       h('select', { name: 'currency', 'aria-label': 'Основна валюта групи', title: 'Основна валюта групи' },
-        currencies.map((c) => h('option', { value: c.code, selected: c.code === 'UAH' }, `${c.flag} ${c.code}`))),
+        currencies.map((c) => h('option', { value: c.code, selected: c.code === defaultCurrency }, `${c.flag} ${c.code}`))),
       h('button', { type: 'submit' }, 'Створити групу'),
     ),
     h('p', { class: 'sub' }, 'Валюта — основна для групи: у ній рахуються баланси. Витрати можна вносити й в інших валютах за курсом.'),
@@ -1114,14 +1141,47 @@ function balancesCard(balances, profileOf) {
   );
 }
 
-/** Поточний курс з відкритого набору курсів (оновлюється щодня); повертає «скільки base за 1 code». */
+/**
+ * Поточні курси з відкритого набору fawazahmed0/currency-api (оновлюється щодня).
+ * Повертає { date, rateOf(code) } — «скільки base за 1 code». Кешуємо на 10 хвилин.
+ */
+const marketCache = new Map();
+async function fetchMarketRates(base) {
+  const key = base.toLowerCase();
+  const cached = marketCache.get(key);
+  if (cached && Date.now() - cached.at < 10 * 60 * 1000) return cached.value;
+  const urls = [
+    `https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/${key}.min.json`,
+    `https://latest.currency-api.pages.dev/v1/currencies/${key}.min.json`, // запасне дзеркало
+  ];
+  let data = null;
+  for (const url of urls) {
+    try {
+      const response = await fetch(url);
+      if (response.ok) data = await response.json();
+    } catch {
+      // пробуємо наступне джерело
+    }
+    if (data?.[key]) break;
+  }
+  if (!data?.[key]) throw new Error('Не вдалося отримати курси з інтернету');
+  const value = {
+    date: data.date,
+    rateOf(code) {
+      const perBase = data[key][code.toLowerCase()];
+      if (!perBase) return null;
+      const rate = 1 / perBase;
+      return Number(rate.toFixed(rate >= 10 ? 2 : 4)); // 44,77 грн за $, але 4,2513 zł за €
+    },
+  };
+  marketCache.set(key, { at: Date.now(), value });
+  return value;
+}
+
 async function fetchMarketRate(code, base) {
-  const url = `https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/${base.toLowerCase()}.json`;
-  const response = await fetch(url);
-  if (!response.ok) throw new Error('Не вдалося отримати курс');
-  const perBase = (await response.json())?.[base.toLowerCase()]?.[code.toLowerCase()];
-  if (!perBase) throw new Error(`Курс ${code} не знайдено`);
-  return Number((1 / perBase).toFixed(4));
+  const rate = (await fetchMarketRates(base)).rateOf(code);
+  if (!rate) throw new Error(`Курс ${code} не знайдено`);
+  return rate;
 }
 
 /** Налаштування курсів групи: скільки основної валюти коштує 1 одиниця іншої. */
@@ -1176,23 +1236,57 @@ function ratesCard(group, rateRows, reload) {
   const currencySelect = h('select', { name: 'currency', 'aria-label': 'Валюта' },
     available.map((c) => h('option', { value: c.code, title: c.name }, `${c.flag} ${c.code}`)));
   const rateInput = h('input', { name: 'rate', inputMode: 'decimal', placeholder: 'курс', required: true });
-  const suggest = h('button', { type: 'button', class: 'link suggest' }, '↻ Підставити поточний курс');
-  suggest.addEventListener('click', async () => {
+  // Під час вибору валюти одразу підставляємо поточний курс з інтернету (його можна виправити вручну).
+  const marketNote = h('div', { class: 'sub' });
+  let rateTouched = false;
+  rateInput.addEventListener('input', () => { rateTouched = true; });
+  async function fillMarketRate() {
     error.textContent = '';
-    suggest.disabled = true;
+    marketNote.textContent = 'Шукаю поточний курс…';
+    const code = currencySelect.value;
     try {
-      rateInput.value = formatRate(await fetchMarketRate(currencySelect.value, base));
+      const market = await fetchMarketRates(base);
+      const rate = market.rateOf(code);
+      if (currencySelect.value !== code) return; // поки чекали, обрали іншу валюту
+      if (!rate) throw new Error(`Курс ${code} не знайдено`);
+      if (!rateTouched) rateInput.value = formatRate(rate);
+      marketNote.textContent = `Курс з інтернету на ${formatDate(market.date)}: 1 ${currencySymbol(code)} = ${formatRate(rate)} ${baseSymbol}`;
     } catch (err) {
-      error.textContent = `${err.message}. Введіть курс вручну.`;
-    } finally {
-      suggest.disabled = false;
+      marketNote.textContent = `${err.message}. Введіть курс вручну.`;
     }
+  }
+  currencySelect.addEventListener('change', () => {
+    rateTouched = false;
+    rateInput.value = '';
+    fillMarketRate();
   });
+  if (available.length > 0) fillMarketRate();
+
   const form = h('form', {},
     h('div', { class: 'add-rate' }, currencySelect, rateInput, h('button', { type: 'submit' }, 'Додати')),
-    suggest,
+    marketNote,
     error,
   );
+
+  // Оновити всі курси групи з інтернету одним натиском.
+  const refreshAll = rateRows.length > 0 && h('button', {
+    type: 'button', class: 'secondary refresh-rates',
+    onClick: async (e) => {
+      const button = e.currentTarget;
+      button.disabled = true;
+      try {
+        const market = await fetchMarketRates(base);
+        const updates = rateRows.map((r) => [r.currency, market.rateOf(r.currency)]).filter(([, rate]) => rate);
+        if (updates.length === 0) throw new Error('Курсів для цих валют не знайдено');
+        await Promise.all(updates.map(([code, rate]) => setRate(code, rate)));
+        toast(`Курси оновлено (на ${formatDate(market.date)})`);
+        reload();
+      } catch (err) {
+        toast(err.message);
+        button.disabled = false;
+      }
+    },
+  }, '↻ Оновити курси з інтернету');
   form.addEventListener('submit', submitHandler(form, error, async (data) => {
     const rate = parseRate(data.get('rate'));
     if (!rate) throw new Error('Вкажіть курс, напр. 41,25');
@@ -1207,6 +1301,7 @@ function ratesCard(group, rateRows, reload) {
       `Основна валюта групи — ${currencyLabel(base)} (${currencyInfo(base).name}). У ній рахуються баланси й борги. `
       + 'Витрату в іншій валюті перераховуємо за курсом на момент додавання; зміна курсу не переписує старі витрати.'),
     rows.length > 0 ? h('ul', { class: 'list rates' }, rows) : h('p', { class: 'empty' }, 'Інших валют ще немає.'),
+    refreshAll,
     available.length > 0 && h('h3', {}, 'Додати валюту'),
     available.length > 0 && form,
   );
