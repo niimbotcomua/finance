@@ -123,6 +123,10 @@ test('повний сценарій з правилами доступу', async
   // Видалення учасника з історією заборонено.
   await rejects(as('anna', 'select public.remove_group_member($1, $2)', [gid, users.vira]), 'історію');
 
+  // Змінювати можна лише своє ім'я, але не email (інакше можна перехопити чужі запрошення).
+  await as('anna', "update public.profiles set name = 'Ганна' where id = $1", [users.anna]);
+  await rejects(as('anna', "update public.profiles set email = 'victim@example.com' where id = $1", [users.anna]), 'permission denied');
+
   // Чужий не може видалити витрату (RLS просто не знаходить рядок).
   await as('stranger', 'delete from public.expenses');
   assert.equal((await as('anna', 'select * from public.expenses')).length, 2);

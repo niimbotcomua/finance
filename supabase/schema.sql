@@ -86,9 +86,13 @@ create trigger on_auth_user_created
   for each row execute function public.handle_new_user();
 
 -- ---------- Допоміжні функції для правил доступу ----------
+-- Лежать у схемі private, яку Supabase не відкриває через API: їх не можна викликати напряму.
+
+create schema if not exists private;
+grant usage on schema private to authenticated;
 
 -- security definer, щоб правила group_members не викликали самі себе рекурсивно.
-create or replace function public.is_group_member(gid bigint)
+create or replace function private.is_group_member(gid bigint)
 returns boolean
 language sql
 stable
@@ -101,7 +105,7 @@ as $$
   );
 $$;
 
-create or replace function public.shares_group_with(other uuid)
+create or replace function private.shares_group_with(other uuid)
 returns boolean
 language sql
 stable
@@ -128,7 +132,7 @@ alter table public.settlements    enable row level security;
 drop policy if exists "profiles: свій і співучасників" on public.profiles;
 create policy "profiles: свій і співучасників" on public.profiles
   for select to authenticated
-  using (id = auth.uid() or public.shares_group_with(id));
+  using (id = auth.uid() or private.shares_group_with(id));
 
 drop policy if exists "profiles: змінювати свій" on public.profiles;
 create policy "profiles: змінювати свій" on public.profiles
@@ -138,46 +142,46 @@ create policy "profiles: змінювати свій" on public.profiles
 drop policy if exists "groups: учасники бачать" on public.groups;
 create policy "groups: учасники бачать" on public.groups
   for select to authenticated
-  using (public.is_group_member(id));
+  using (private.is_group_member(id));
 
 drop policy if exists "groups: учасники перейменовують" on public.groups;
 create policy "groups: учасники перейменовують" on public.groups
   for update to authenticated
-  using (public.is_group_member(id)) with check (public.is_group_member(id));
+  using (private.is_group_member(id)) with check (private.is_group_member(id));
 
 drop policy if exists "group_members: учасники бачать" on public.group_members;
 create policy "group_members: учасники бачать" on public.group_members
   for select to authenticated
-  using (public.is_group_member(group_id));
+  using (private.is_group_member(group_id));
 
 drop policy if exists "expenses: учасники бачать" on public.expenses;
 create policy "expenses: учасники бачать" on public.expenses
   for select to authenticated
-  using (public.is_group_member(group_id));
+  using (private.is_group_member(group_id));
 
 drop policy if exists "expenses: учасники видаляють" on public.expenses;
 create policy "expenses: учасники видаляють" on public.expenses
   for delete to authenticated
-  using (public.is_group_member(group_id));
+  using (private.is_group_member(group_id));
 
 drop policy if exists "expense_shares: учасники бачать" on public.expense_shares;
 create policy "expense_shares: учасники бачать" on public.expense_shares
   for select to authenticated
   using (exists (
     select 1 from public.expenses e
-    where e.id = expense_id and public.is_group_member(e.group_id)
+    where e.id = expense_id and private.is_group_member(e.group_id)
   ));
 
 drop policy if exists "settlements: учасники бачать" on public.settlements;
 create policy "settlements: учасники бачать" on public.settlements
   for select to authenticated
-  using (public.is_group_member(group_id));
+  using (private.is_group_member(group_id));
 
 drop policy if exists "settlements: учасники додають" on public.settlements;
 create policy "settlements: учасники додають" on public.settlements
   for insert to authenticated
   with check (
-    public.is_group_member(group_id)
+    private.is_group_member(group_id)
     and created_by = auth.uid()
     and exists (select 1 from public.group_members where group_id = settlements.group_id and user_id = from_user)
     and exists (select 1 from public.group_members where group_id = settlements.group_id and user_id = to_user)
@@ -186,7 +190,7 @@ create policy "settlements: учасники додають" on public.settlemen
 drop policy if exists "settlements: учасники видаляють" on public.settlements;
 create policy "settlements: учасники видаляють" on public.settlements
   for delete to authenticated
-  using (public.is_group_member(group_id));
+  using (private.is_group_member(group_id));
 
 -- ---------- Дії, що потребують перевірок (викликаються через supabase.rpc) ----------
 
@@ -217,7 +221,7 @@ as $$
 declare
   new_member uuid;
 begin
-  if not public.is_group_member(gid) then
+  if not private.is_group_member(gid) then
     raise exception 'Групу не знайдено';
   end if;
   select id into new_member from public.profiles where lower(email) = lower(trim(member_email));
@@ -239,7 +243,7 @@ security definer
 set search_path = ''
 as $$
 begin
-  if not public.is_group_member(gid) then
+  if not private.is_group_member(gid) then
     raise exception 'Групу не знайдено';
   end if;
   if exists (select 1 from public.expenses where group_id = gid and paid_by = member)
@@ -270,7 +274,7 @@ declare
   new_id bigint;
   share_total bigint;
 begin
-  if not public.is_group_member(gid) then
+  if not private.is_group_member(gid) then
     raise exception 'Групу не знайдено';
   end if;
   if not exists (select 1 from public.group_members where group_id = gid and user_id = paid_by) then
@@ -335,18 +339,20 @@ $$;
 
 -- ---------- Права доступу ----------
 
-revoke all on all tables in schema public from anon;
-grant select, update on public.profiles to authenticated;
-grant select, update on public.groups to authenticated;
+-- Supabase за замовчуванням дає ролям anon/authenticated усі права на нові таблиці — звужуємо їх.
+revoke all on public.profiles, public.groups, public.group_members, public.expenses,
+  public.expense_shares, public.settlements from anon, authenticated;
+grant select, update (name) on public.profiles to authenticated;
+grant select, update (name) on public.groups to authenticated;
 grant select on public.group_members to authenticated;
 grant select, delete on public.expenses to authenticated;
 grant select on public.expense_shares to authenticated;
 grant select, insert, delete on public.settlements to authenticated;
 
-revoke execute on all functions in schema public from public, anon;
+revoke execute on all functions in schema public, private from public, anon, authenticated;
 grant execute on function
-  public.is_group_member(bigint),
-  public.shares_group_with(uuid),
+  private.is_group_member(bigint),
+  private.shares_group_with(uuid),
   public.create_group(text),
   public.add_group_member(bigint, text),
   public.remove_group_member(bigint, uuid),
