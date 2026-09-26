@@ -77,6 +77,22 @@ async function run(request) {
   return data;
 }
 
+// Запрошення, яке треба прийняти після входу (переживає реєстрацію та перехід за посиланням з листа).
+const PENDING_INVITE_KEY = 'pendingInvite';
+const pendingInvite = {
+  get() {
+    try { return localStorage.getItem(PENDING_INVITE_KEY); } catch { return null; }
+  },
+  set(token) {
+    try { localStorage.setItem(PENDING_INVITE_KEY, token); } catch { /* недоступно — просто без запам'ятовування */ }
+  },
+  clear() {
+    try { localStorage.removeItem(PENDING_INVITE_KEY); } catch { /* ігноруємо */ }
+  },
+};
+
+const inviteLink = (token) => `${location.origin}${location.pathname}#/join/${token}`;
+
 async function loadCurrentUser() {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return null;
@@ -122,8 +138,8 @@ function renderUserbox() {
 
 // ---------- Вхід / реєстрація ----------
 
-function renderAuth() {
-  let mode = 'login';
+function renderAuth(invite = null) {
+  let mode = invite ? 'register' : 'login';
   const error = h('div', { class: 'error' });
   const nameField = h('label', {}, "Ім'я", h('input', { name: 'name', autocomplete: 'name' }));
   const submit = h('button', { type: 'submit' });
@@ -164,7 +180,7 @@ function renderAuth() {
           h('div', { class: 'card auth' },
             h('h1', {}, 'Перевірте пошту'),
             h('p', {}, `Ми надіслали лист на ${email}. Перейдіть за посиланням у ньому, щоб підтвердити реєстрацію, а потім увійдіть.`),
-            h('a', { href: '#/login', onClick: () => renderAuth() }, '← До входу'),
+            h('a', { href: '#/login', onClick: () => renderAuth(invite) }, '← До входу'),
           ),
         );
         return;
@@ -172,14 +188,21 @@ function renderAuth() {
     }
     currentUser = await loadCurrentUser();
     renderUserbox();
-    location.hash = '#/';
+    const token = pendingInvite.get();
+    const target = token ? `#/join/${token}` : '#/';
+    if (location.hash === target) route();
+    else location.hash = target;
   }));
 
-  setMode('login');
+  setMode(mode);
   mount(
     h('div', { class: 'card auth' },
       h('h1', {}, 'Ласкаво просимо'),
-      h('p', { class: 'sub' }, 'Ведіть спільні витрати з друзями, сусідами чи колегами та дізнавайтеся, хто кому скільки винен.'),
+      invite
+        ? h('p', { class: 'invite-banner' },
+          'Вас запрошено до групи ', h('strong', {}, `«${invite.name}»`),
+          '. Зареєструйтесь або увійдіть — і ви одразу потрапите в групу.')
+        : h('p', { class: 'sub' }, 'Ведіть спільні витрати з друзями, сусідами чи колегами та дізнавайтеся, хто кому скільки винен.'),
       h('div', { class: 'tabs' }, tabLogin, tabRegister),
       form,
     ),
@@ -242,7 +265,7 @@ async function renderGroups() {
 
 async function renderGroup(groupId) {
   const [group, memberRows, expenseRows, settlementRows] = await Promise.all([
-    run(supabase.from('groups').select('id, name, currency').eq('id', groupId).maybeSingle()),
+    run(supabase.from('groups').select('id, name, currency, invite_token').eq('id', groupId).maybeSingle()),
     run(supabase.from('group_members').select('profiles (id, name, email)').eq('group_id', groupId).order('id')),
     run(supabase.from('expenses')
       .select('id, description, amount, paid_by, date, expense_shares (user_id, amount)')
@@ -282,7 +305,7 @@ async function renderGroup(groupId) {
       h('div', {},
         balancesCard(balances, nameOf),
         transfersCard(groupId, suggestedTransfers, nameOf, reload),
-        membersCard(groupId, members, balances, reload),
+        membersCard(group, members, reload),
       ),
       h('div', {},
         expenseFormCard(groupId, members, reload),
@@ -342,11 +365,12 @@ function transfersCard(groupId, transfers, nameOf, reload) {
   );
 }
 
-function membersCard(groupId, members, balances, reload) {
+function membersCard(group, members, reload) {
+  const groupId = group.id;
   const error = h('div', { class: 'error' });
   const form = h('form', {},
     h('div', { class: 'row' },
-      h('input', { name: 'email', type: 'email', placeholder: 'email учасника', required: true }),
+      h('input', { name: 'email', type: 'email', placeholder: 'email зареєстрованого учасника', required: true }),
       h('button', { type: 'submit' }, 'Додати'),
     ),
     error,
@@ -380,10 +404,124 @@ function membersCard(groupId, members, balances, reload) {
         ),
       ),
     ),
+    inviteBlock(group, reload),
+    h('p', { class: 'sub' }, 'Або додайте за email, якщо людина вже зареєстрована:'),
     form,
-    h('p', { class: 'sub' }, 'Учасник має бути зареєстрований у застосунку.'),
   );
 }
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function inviteBlock(group, reload) {
+  const link = inviteLink(group.invite_token);
+  const input = h('input', { value: link, readOnly: true, 'aria-label': 'Посилання-запрошення', onFocus: (e) => e.target.select() });
+  const share = async () => {
+    try {
+      await navigator.share({
+        title: 'Спільні витрати',
+        text: `Приєднуйся до групи «${group.name}» у «Спільних витратах»`,
+        url: link,
+      });
+    } catch { /* користувач закрив вікно — нічого не робимо */ }
+  };
+  return h('div', { class: 'invite' },
+    h('h3', {}, 'Запросити за посиланням'),
+    h('p', { class: 'sub' }, 'Надішліть це посилання другу — він зареєструється й одразу потрапить у групу.'),
+    h('div', { class: 'row' },
+      input,
+      h('div', { class: 'actions' },
+        h('button', {
+          type: 'button',
+          onClick: async () => {
+            if (await copyText(link)) toast('Посилання скопійовано');
+            else { input.focus(); input.select(); toast('Скопіюйте виділене посилання'); }
+          },
+        }, 'Копіювати'),
+        typeof navigator.share === 'function' && h('button', { type: 'button', class: 'secondary', onClick: share }, 'Надіслати'),
+      ),
+    ),
+    h('button', {
+      type: 'button',
+      class: 'link',
+      onClick: async () => {
+        if (!confirm('Створити нове посилання? Старе перестане працювати.')) return;
+        try {
+          await run(supabase.rpc('reset_group_invite', { gid: group.id }));
+          toast('Створено нове посилання');
+          reload();
+        } catch (err) {
+          toast(err.message);
+        }
+      },
+    }, 'Створити нове посилання'),
+  );
+}
+
+// ---------- Приєднання за посиланням ----------
+
+async function renderJoin(token) {
+  const [invite] = await run(supabase.rpc('get_group_invite', { token }));
+  if (!invite) {
+    pendingInvite.clear();
+    mount(h('div', { class: 'card auth' },
+      h('h1', {}, 'Посилання недійсне'),
+      h('p', {}, 'Можливо, його замінили новим. Попросіть учасника групи надіслати свіже посилання.'),
+      h('a', { href: '#/' }, '← На головну'),
+    ));
+    return;
+  }
+  if (!currentUser) {
+    pendingInvite.set(token);
+    renderAuth(invite);
+    return;
+  }
+  if (invite.already_member) {
+    pendingInvite.clear();
+    location.hash = `#/groups/${invite.group_id}`;
+    return;
+  }
+
+  const join = async () => {
+    const groupId = await run(supabase.rpc('join_group', { token }));
+    pendingInvite.clear();
+    toast(`Ви приєдналися до групи «${invite.name}»`);
+    location.hash = `#/groups/${groupId}`;
+  };
+  // Людина щойно зареєструвалась/увійшла саме заради цього запрошення — приєднуємо одразу.
+  if (pendingInvite.get() === token) {
+    await join();
+    return;
+  }
+
+  const error = h('div', { class: 'error' });
+  const button = h('button', {
+    onClick: async () => {
+      button.disabled = true;
+      error.textContent = '';
+      try {
+        await join();
+      } catch (err) {
+        error.textContent = err.message;
+        button.disabled = false;
+      }
+    },
+  }, 'Приєднатися');
+  mount(h('div', { class: 'card auth' },
+    h('h1', {}, 'Запрошення'),
+    h('p', {}, 'Вас запрошено до групи ', h('strong', {}, `«${invite.name}»`), ` (${invite.member_count} учасн.).`),
+    error,
+    button,
+    h('p', {}, h('a', { href: '#/' }, 'Не зараз')),
+  ));
+}
+
 
 function expenseFormCard(groupId, members, reload) {
   const error = h('div', { class: 'error' });
@@ -571,6 +709,17 @@ async function route() {
     if (!currentUser) {
       currentUser = await loadCurrentUser();
       renderUserbox();
+    }
+    const joinMatch = hash.match(/^#\/join\/([0-9a-f-]{36})$/i);
+    if (joinMatch) {
+      await renderJoin(joinMatch[1].toLowerCase());
+      return;
+    }
+    // Після підтвердження email людина повертається на головну — довершуємо запрошення.
+    const pending = pendingInvite.get();
+    if (currentUser && pending) {
+      location.hash = `#/join/${pending}`;
+      return;
     }
     if (!currentUser && hash !== '#/login') {
       location.hash = '#/login';

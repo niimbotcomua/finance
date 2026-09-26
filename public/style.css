@@ -123,3 +123,18 @@ ul.list li:last-child { border-bottom: none; }
   background: var(--text); color: var(--bg);
   padding: 10px 16px; border-radius: 8px; max-width: calc(100% - 32px);
 }
+
+h3 { font-size: 15px; margin: 0 0 4px; }
+.invite {
+  margin: 14px 0;
+  padding: 12px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+}
+.invite .row { align-items: center; margin: 8px 0 6px; }
+.invite input { flex: 1 1 200px; font-size: 13px; color: var(--muted); }
+.invite-banner {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
