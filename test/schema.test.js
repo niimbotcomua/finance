@@ -470,3 +470,23 @@ test('брендинг і SEO: змінює лише адмін, читати м
   await upload('anna', 'logo-3.png');
   await rejects(upload('bohdan', 'evil.png'), 'row-level security');
 });
+
+test('окремий логотип для кожного дизайну', async () => {
+  await db.query('insert into private.admins (user_id) values ($1) on conflict do nothing', [users.anna]);
+  const setLogo = (who, design, path) => as(who,
+    'select public.admin_set_design_logo(design => $1, logo_path => $2) as old', [design, path]);
+  const logos = async () => (await as(null, 'select public.site_logos() as l'))[0].l;
+  await rejects(setLogo('bohdan', 'dark', 'x.png'), 'адміністратора');
+  await rejects(setLogo('anna', 'pink', 'x.png'), 'Невідомий дизайн');
+  await rejects(setLogo('anna', 'dark', '../x.png'), 'Некоректний файл');
+
+  assert.equal((await setLogo('anna', 'dark', 'dark-1.png'))[0].old, null);
+  await setLogo('anna', 'mono', 'shared.png');
+  await setLogo('anna', 'nova', 'shared.png');
+  assert.deepEqual(await logos(), { dark: 'dark-1.png', mono: 'shared.png', nova: 'shared.png' });
+  // Заміна: старий файл повертається для видалення, лише якщо ним більше ніхто не користується.
+  assert.equal((await setLogo('anna', 'dark', 'dark-2.png'))[0].old, 'dark-1.png');
+  assert.equal((await setLogo('anna', 'mono', null))[0].old, null); // shared.png ще в nova
+  assert.equal((await setLogo('anna', 'nova', null))[0].old, 'shared.png');
+  assert.deepEqual(await logos(), { dark: 'dark-2.png' });
+});
