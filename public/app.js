@@ -2327,6 +2327,17 @@ function personPill(profile, amount = null) {
     amount === null ? null : h('span', { class: 'pill-amount' }, formatMoney(amount)));
 }
 
+/** Частка поточного користувача у витраті (у копійках основної валюти); 0 — не бере участі. */
+const myShareOf = (e) => e.shares.find((s) => s.userId === currentUser.id)?.amount ?? 0;
+
+/** Колонка «Ваша частка» в рядку витрати. */
+function myShareCell(e) {
+  const mine = myShareOf(e);
+  return h('div', { class: 'expense-mine', title: 'Ваша частка в цій витраті' },
+    mine > 0 ? h('span', { class: 'amount mine' }, formatMoney(mine)) : h('span', { class: 'amount sub' }, '—'),
+    e.paidBy === currentUser.id ? h('div', { class: 'sub' }, 'ви платили') : null);
+}
+
 function expensesCard(groupId, expenses, profileOf, reload, onEdit) {
   const expenseItem = (e) => {
     // Рівний поділ: частки відрізняються щонайбільше на копійку (залишок від ділення).
@@ -2344,6 +2355,7 @@ function expensesCard(groupId, expenses, profileOf, reload, onEdit) {
           h('span', { class: 'amount' }, e.currency ? formatMoney(e.originalAmount, e.currency) : formatMoney(e.amount)),
           e.currency ? h('div', { class: 'sub' }, `≈ ${formatMoney(e.amount)}`) : null,
         ),
+        myShareCell(e),
         h('span', { class: 'chevron', 'aria-hidden': 'true' }, '›'),
       ),
       h('div', { class: 'expense-body' },
@@ -2387,12 +2399,32 @@ function expensesCard(groupId, expenses, profileOf, reload, onEdit) {
     return h('li', {}, details);
   };
 
-  return h('div', { class: 'card' },
+  // Ширина колонок — за найдовшою сумою, щоб шапка, рядки й «Разом» стояли рівно.
+  const longest = (texts) => Math.max(...texts.map((t) => t.length));
+  const amountTexts = [formatMoney(expenses.reduce((sum, e) => sum + e.amount, 0)),
+    ...expenses.map((e) => (e.currency ? formatMoney(e.originalAmount, e.currency) : formatMoney(e.amount)))];
+  const mineTexts = [formatMoney(expenses.reduce((sum, e) => sum + myShareOf(e), 0)), 'Ваша частка'];
+  const card = h('div', { class: 'card' },
     h('h2', {}, 'Витрати'),
     expenses.length === 0
       ? h('p', { class: 'empty' }, 'Витрат ще немає.')
-      : h('ul', { class: 'list expenses' }, expenses.map(expenseItem)),
+      : [
+        h('div', { class: 'expense-cols', 'aria-hidden': 'true' },
+          h('span', {}), h('span', {}, 'Сума'), h('span', {}, 'Ваша частка'), h('span', {})),
+        h('ul', { class: 'list expenses' }, expenses.map(expenseItem)),
+        h('div', { class: 'expense-cols expense-total' },
+          h('span', {}, `Разом (${expenses.length})`),
+          h('span', { class: 'amount' }, formatMoney(expenses.reduce((sum, e) => sum + e.amount, 0))),
+          h('span', { class: 'amount mine' }, formatMoney(expenses.reduce((sum, e) => sum + myShareOf(e), 0))),
+          h('span', {})),
+      ],
   );
+  if (expenses.length > 0) {
+    // ≈9,5px на символ жирного шрифту 15px — з запасом, щоб суми не налазили одна на одну.
+    card.style.setProperty('--amount-w', `${Math.ceil(longest(amountTexts) * 9.5)}px`);
+    card.style.setProperty('--mine-w', `${Math.ceil(longest(mineTexts) * 9.5)}px`);
+  }
+  return card;
 }
 
 function settlementsCard(groupId, settlements, nameOf, reload) {
