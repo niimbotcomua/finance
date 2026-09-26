@@ -1312,6 +1312,23 @@ async function renderGroup(groupId) {
     analytics: { label: '📊 Аналітика', render: () => analyticsCard(expenses, members, categoryOf) },
     history: { label: '🕘 Історія змін', render: () => historyCard(history, nameOf, categoryOf) },
     report: { label: '📄 Звіт (Excel, PDF)', render: () => reportCard(group, members, expenses, settlements, categoryOf) },
+    // Порожню групу (без витрат і повернень) автор може видалити.
+    ...(group.created_by === currentUser.id && expenses.length === 0 && settlements.length === 0 ? {
+      delete: {
+        label: '🗑 Видалити групу',
+        danger: true,
+        action: async () => {
+          if (!confirm(`Видалити групу «${group.name}»? Витрат у ній немає; учасників буде прибрано з групи. Цю дію не можна скасувати.`)) return;
+          try {
+            await run(supabase.rpc('delete_group', { gid: groupId }));
+            toast('Групу видалено');
+            location.hash = '#/';
+          } catch (err) {
+            toast(err.message);
+          }
+        },
+      },
+    } : {}),
   };
   const menu = groupMenu(panelDefs, (key) => {
     groupUi.panel = groupUi.panel === key ? null : key;
@@ -1538,10 +1555,12 @@ function groupMenu(defs, onPick) {
     update(active) {
       list.replaceChildren(...Object.entries(defs).map(([key, def]) =>
         h('button', {
-          type: 'button', role: 'menuitem', class: key === active ? 'menu-item active' : 'menu-item',
+          type: 'button', role: 'menuitem',
+          class: ['menu-item', key === active ? 'active' : '', def.danger ? 'danger' : ''].filter(Boolean).join(' '),
           onClick: () => {
             setOpen(false);
-            onPick(key);
+            if (def.action) def.action(); // пункт-дія (напр. «Видалити групу»), а не блок
+            else onPick(key);
           },
         },
         h('span', {}, def.label),

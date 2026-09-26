@@ -500,3 +500,27 @@ test('власний дизайн користувача: змінює лише 
   assert.notEqual((await db.query('select design from public.profiles where id = $1', [users.anna])).rows[0].design, 'mono');
   await as('vira', 'update public.profiles set design = null where id = $1', [users.vira]);
 });
+
+test('видалення групи: лише автор і лише без витрат', async () => {
+  const [{ create_group: gid }] = await as('anna', 'select public.create_group($1)', ['Порожня']);
+  await as('anna', 'select public.add_group_member($1, $2)', [gid, 'bohdan@example.com']);
+  const del = (who) => as(who, 'select public.delete_group(gid => $1)', [gid]);
+  await rejects(del('stranger'), 'Групу не знайдено');
+  await rejects(del('bohdan'), 'лише її автор');
+
+  // З витратою видалити не можна.
+  const [{ add_expense: eid }] = await as('anna',
+    'select public.add_expense(gid => $1, description => $2, amount => 100, paid_by => $3, shares => $4::jsonb)',
+    [gid, 'Кава', users.anna, JSON.stringify([{ user_id: users.anna, amount: 100 }])]);
+  await rejects(del('anna'), 'вже є витрати');
+  await as('anna', 'delete from public.expenses where id = $1', [eid]);
+
+  // З поверненням боргу — теж ні.
+  await as('anna', 'insert into public.settlements (group_id, from_user, to_user, amount) values ($1, $2, $3, 100)', [gid, users.anna, users.bohdan]);
+  await rejects(del('anna'), 'вже є витрати');
+  await as('anna', 'delete from public.settlements where group_id = $1', [gid]);
+
+  await del('anna');
+  assert.equal((await db.query('select count(*)::int as n from public.groups where id = $1', [gid])).rows[0].n, 0);
+  assert.equal((await db.query('select count(*)::int as n from public.group_members where group_id = $1', [gid])).rows[0].n, 0);
+});
