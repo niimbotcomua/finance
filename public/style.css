@@ -416,11 +416,7 @@ details.expense[open] .chevron { transform: rotate(90deg); color: var(--accent);
 .hero-amount + .hero-amount { margin-top: 10px; }
 
 /* Нова група: назва, валюта, кнопка; на телефоні — назва на всю ширину */
-.create-group { display: grid; gap: 10px; grid-template-columns: 1fr 120px auto; }
-@media (max-width: 560px) {
-  .create-group { grid-template-columns: 1fr 1fr; }
-  .create-group input { grid-column: 1 / -1; }
-}
+.create-group { display: grid; gap: 10px; grid-template-columns: 1fr; }
 
 /* Сума + валюта в одному полі */
 .amount-field { display: flex; gap: 6px; }
@@ -633,3 +629,36 @@ details.expense[open] {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
 }
 details.expense[open] > summary .expense-title { color: var(--accent); }
+
+/* Список груп — окремі плитки (у всіх дизайнах); натискається вся плитка */
+.card:has(> ul.group-tiles) { background: none; padding: 0; box-shadow: none; }
+ul.group-tiles { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+ul.list.group-tiles li.group-tile {
+  position: relative; display: grid; gap: 10px; align-items: stretch;
+  grid-template-columns: minmax(0, 1fr); justify-content: stretch;
+  padding: 16px 18px; border: none; border-radius: var(--radius); background: var(--card);
+  transition: box-shadow 0.15s ease, transform 0.1s ease;
+}
+.group-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+a.group-name { font-size: 19px; font-weight: 800; line-height: 1.25; letter-spacing: -0.01em; color: var(--text); }
+a.group-name::after { content: ''; position: absolute; inset: 0; border-radius: inherit; } /* уся плитка — посилання */
+.group-go { color: var(--muted); font-size: 26px; line-height: 0.9; }
+.group-meta { margin-top: 0; }
+.group-bottom { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.group-bottom .created { margin: 0; }
+.group-tile > button { position: relative; z-index: 1; justify-self: start; } /* «Повернути» в архіві — поверх посилання */
+.balance-pill {
+  padding: 4px 10px; border-radius: 999px; font-size: 13px; font-weight: 700; white-space: nowrap;
+  background: var(--card-2); color: var(--muted); font-variant-numeric: tabular-nums;
+}
+.balance-pill.pos { background: color-mix(in srgb, var(--positive) 14%, transparent); color: var(--positive); }
+.balance-pill.neg { background: color-mix(in srgb, var(--negative) 14%, transparent); color: var(--negative); }
+ul.list.group-tiles li.group-tile:active { transform: scale(0.99); }
+@media (hover: hover) {
+  ul.list.group-tiles li.group-tile:hover { box-shadow: inset 0 0 0 1.5px var(--accent); }
+  ul.list.group-tiles li.group-tile:hover .group-go { color: var(--accent); }
+}
+
+/* Нова група: поле, валюта й кнопка — кожне на всю ширину */
+.create-group button { width: 100%; }
+.create-group + .sub { font-size: 12px; margin: 2px 2px 0; }
