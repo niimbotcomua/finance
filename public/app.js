@@ -53,7 +53,7 @@ const avatarUrl = (path) => supabase.storage.from('avatars').getPublicUrl(path).
 
 /** Кружечок з фото профілю або першою літерою імені. */
 function avatar(profile, size = 'sm') {
-  const cls = `avatar avatar-${size}`;
+  const cls = `avatar avatar-${size}${profile?.id && profile.id === currentUser?.id ? ' avatar-me' : ''}`;
   if (profile?.avatar_path) return h('img', { class: cls, src: avatarUrl(profile.avatar_path), alt: '' });
   return h('span', { class: cls, 'aria-hidden': 'true' }, (profile?.name ?? '?').trim().charAt(0).toUpperCase() || '?');
 }
@@ -567,6 +567,15 @@ function balanceLabel(balance) {
   return h('span', { class: 'amount sub' }, 'розраховано');
 }
 
+/** Кілька маленьких аватарів, що накладаються один на одного. */
+function avatarStack(profiles, max = 5) {
+  const extra = profiles.length - max;
+  return h('span', { class: 'avatar-stack' },
+    profiles.slice(0, max).map((p) => avatar(p, 'xs')),
+    extra > 0 && h('span', { class: 'avatar avatar-xs more' }, `+${extra}`),
+  );
+}
+
 async function renderGroups() {
   const groups = (await run(supabase.rpc('my_groups'))).map((g) => ({
     id: g.id,
@@ -574,6 +583,10 @@ async function renderGroups() {
     memberCount: Number(g.member_count),
     myBalance: Number(g.my_balance),
   }));
+  // Учасники всіх груп одним запитом — для мініатюр аватарів.
+  const memberRows = groups.length === 0 ? [] : await run(supabase.from('group_members')
+    .select('group_id, profiles (id, name, avatar_path)').in('group_id', groups.map((g) => g.id)).order('id'));
+  const membersOf = (groupId) => memberRows.filter((r) => r.group_id === groupId && r.profiles).map((r) => r.profiles);
   const error = h('div', { class: 'error' });
   const form = h('form', {},
     h('div', { class: 'row' },
@@ -599,8 +612,11 @@ async function renderGroups() {
           groups.map((g) =>
             h('li', {},
               h('div', {},
-                h('a', { href: `#/groups/${g.id}` }, g.name),
-                h('div', { class: 'sub' }, `${g.memberCount} учасн.`),
+                h('a', { class: 'group-name', href: `#/groups/${g.id}` }, g.name),
+                h('div', { class: 'group-meta' },
+                  avatarStack(membersOf(g.id)),
+                  h('span', { class: 'sub' }, `${g.memberCount} учасн.`),
+                ),
               ),
               balanceLabel(g.myBalance),
             ),
@@ -664,6 +680,7 @@ async function renderGroup(groupId) {
   const balances = [...balanceMap].map(([userId, balance]) => ({ userId, balance }));
   const suggestedTransfers = simplifyDebts(balanceMap);
   const nameOf = (id) => members.find((m) => m.id === id)?.name ?? '—';
+  const profileOf = (id) => members.find((m) => m.id === id) ?? { name: '—' };
   const reload = () => renderGroup(groupId);
   const categoryOf = (id) => categories.find((c) => c.id === id) ?? null;
 
@@ -708,7 +725,7 @@ async function renderGroup(groupId) {
     panels,
     h('div', { class: 'grid' },
       h('div', {},
-        balancesCard(balances, nameOf),
+        balancesCard(balances, profileOf),
         transfersCard(groupId, suggestedTransfers, nameOf, reload),
         membersCard(group, members, reload),
       ),
@@ -717,7 +734,7 @@ async function renderGroup(groupId) {
         settlementFormCard(groupId, members, reload),
       ),
     ),
-    expensesCard(groupId, expenses, nameOf, reload, showExpenseForm),
+    expensesCard(groupId, expenses, nameOf, profileOf, reload, showExpenseForm),
     settlementsCard(groupId, settlements, nameOf, reload),
   );
 }
@@ -875,13 +892,20 @@ function groupTitle(group, reload) {
   return title;
 }
 
-function balancesCard(balances, nameOf) {
+/** Ім'я з маленьким аватаром; поточного користувача позначено «ви». */
+function personLabel(profile) {
+  const isMe = profile?.id === currentUser.id;
+  return h('span', { class: `person${isMe ? ' me-name-strong' : ''}` },
+    avatar(profile, 'xs'), profile?.name ?? '—', isMe ? h('span', { class: 'badge' }, 'ви') : null);
+}
+
+function balancesCard(balances, profileOf) {
   return h('div', { class: 'card' },
     h('h2', {}, 'Баланси'),
     h('ul', { class: 'list' },
       balances.map(({ userId, balance }) =>
-        h('li', {},
-          h('span', {}, nameOf(userId), userId === currentUser.id ? ' (ви)' : ''),
+        h('li', { class: userId === currentUser.id ? 'is-me' : '' },
+          personLabel(profileOf(userId)),
           h('span', { class: `amount ${balance > 0 ? 'pos' : balance < 0 ? 'neg' : 'sub'}` },
             balance > 0 ? `+${formatMoney(balance)}` : formatMoney(balance)),
         ),
@@ -943,11 +967,13 @@ function membersCard(group, members, reload) {
     h('h2', {}, `Учасники (${members.length})`),
     h('ul', { class: 'list' },
       members.map((m) =>
-        h('li', {},
+        h('li', { class: m.id === currentUser.id ? 'is-me' : '' },
           h('div', { class: 'person' },
             avatar(m),
             h('div', {},
-              h('div', {}, m.name, m.id === group.created_by ? h('span', { class: 'badge' }, 'автор') : null),
+              h('div', {}, m.name,
+                m.id === currentUser.id ? h('span', { class: 'badge' }, 'ви') : null,
+                m.id === group.created_by ? h('span', { class: 'badge muted' }, 'автор') : null),
               h('div', { class: 'sub' }, m.email),
             ),
           ),
@@ -1261,7 +1287,7 @@ function expenseFormCard(groupId, members, categories, reload, editing = null, o
       h('label', {}, h('input', {
         type: 'checkbox', name: 'participant', value: String(m.id),
         checked: !editing || !isEqual || participantIds.includes(m.id),
-      }), m.name),
+      }), avatar(m, 'xs'), m.name),
     ),
   );
 
@@ -1439,7 +1465,7 @@ function settlementFormCard(groupId, members, reload) {
   return h('div', { class: 'card' }, h('h2', {}, 'Повернення боргу'), form);
 }
 
-function expensesCard(groupId, expenses, nameOf, reload, onEdit) {
+function expensesCard(groupId, expenses, nameOf, profileOf, reload, onEdit) {
   return h('div', { class: 'card' },
     h('h2', {}, 'Витрати'),
     expenses.length === 0
@@ -1451,7 +1477,7 @@ function expensesCard(groupId, expenses, nameOf, reload, onEdit) {
             h('div', {},
               h('div', {}, e.description, e.category ? h('span', { class: 'tag' }, categoryLabel(e.category)) : null),
               h('div', { class: 'sub' },
-                `${formatDate(e.date)} · платив(ла) ${nameOf(e.paidBy)} · ${shareText}`,
+                `${formatDate(e.date)} · платив(ла) `, avatar(profileOf(e.paidBy), 'xs'), ` ${nameOf(e.paidBy)} · ${shareText}`,
                 e.edited ? ' · змінено' : ''),
             ),
             h('div', { class: 'actions' },
