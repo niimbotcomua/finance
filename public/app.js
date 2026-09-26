@@ -15,6 +15,28 @@ const tabbar = document.getElementById('tabbar');
 
 let currentUser = null;
 
+// ---------- Версія дизайну ----------
+// Обирає адміністратор (app_settings.design). Останній вибір пам'ятаємо в браузері, щоб сторінка не «блимала».
+const DESIGNS = {
+  dark: { label: 'Темний', note: 'Початковий: темний фон, рожево-помаранчеві акценти.' },
+  mono: { label: 'Світлий', note: 'У стилі monobank: градієнт угорі, білі картки, чорні кнопки.' },
+};
+function applyDesign(design) {
+  const value = DESIGNS[design] ? design : 'dark';
+  document.documentElement.dataset.design = value;
+  document.querySelector('meta[name=theme-color]')?.setAttribute('content', value === 'mono' ? '#5b5bd6' : '#0d0d0f');
+  try {
+    localStorage.setItem('design', value);
+  } catch {
+    // сховище недоступне (приватний режим) — не страшно
+  }
+}
+try {
+  applyDesign(localStorage.getItem('design'));
+} catch {
+  applyDesign('dark');
+}
+
 // ---------- Утиліти ----------
 
 /** Створює DOM-елемент. Текст завжди вставляється як textContent (захист від XSS). */
@@ -48,6 +70,14 @@ function moneyFormat(currency) {
 }
 /** Сума в сотих частках → «1 234,50 грн» (за замовчуванням — в основній валюті групи). */
 const formatMoney = (kopecks, currency = baseCurrency) => moneyFormat(currency).format(kopecks / 100);
+/** Велика сума: гривні крупно, копійки й знак валюти — дрібніше (як у mono). */
+function bigMoney(kopecks, currency) {
+  const parts = moneyFormat(currency).formatToParts(kopecks / 100);
+  const cut = parts.findIndex((p) => p.type === 'decimal');
+  const head = parts.slice(0, cut === -1 ? parts.length : cut).map((p) => p.value).join('');
+  const tail = cut === -1 ? '' : parts.slice(cut).map((p) => p.value).join('');
+  return h('span', { class: 'big-money' }, head, h('span', { class: 'cents' }, tail));
+}
 const currencySymbol = (currency) => moneyFormat(currency).formatToParts(0).find((p) => p.type === 'currency')?.value ?? currency;
 
 /** Довідник валют (завантажується один раз). */
@@ -144,10 +174,12 @@ const inviteLink = (token) => `${location.origin}${location.pathname}#/join/${to
 async function loadCurrentUser() {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return null;
-  const [profile, isAdmin] = await Promise.all([
+  const [profile, isAdmin, settings] = await Promise.all([
     run(supabase.from('profiles').select('id, name, email, avatar_path').eq('id', session.user.id).maybeSingle()),
     run(supabase.rpc('am_i_admin')).catch(() => false),
+    run(supabase.from('app_settings').select('design').maybeSingle()).catch(() => null),
   ]);
+  if (settings?.design) applyDesign(settings.design);
   return { ...(profile ?? { id: session.user.id, email: session.user.email, name: session.user.email }), isAdmin };
 }
 
@@ -547,9 +579,38 @@ async function renderAdmin() {
     toast('Валюту за замовчуванням збережено');
   }));
 
+  // Перемикач версії дизайну — одразу для всіх користувачів.
+  const designOptions = h('div', { class: 'design-options' });
+  const renderDesignOptions = () => designOptions.replaceChildren(...Object.entries(DESIGNS).map(([key, d]) =>
+    h('button', {
+      type: 'button',
+      class: `design-option${document.documentElement.dataset.design === key ? ' active' : ''}`,
+      'aria-pressed': String(document.documentElement.dataset.design === key),
+      onClick: async (e) => {
+        e.currentTarget.disabled = true;
+        try {
+          await run(supabase.rpc('admin_set_design', { design: key }));
+          applyDesign(key);
+          toast(`Дизайн «${d.label}» увімкнено для всіх`);
+        } catch (err) {
+          toast(err.message);
+        }
+        renderDesignOptions();
+      },
+    },
+    h('span', { class: `design-preview design-preview-${key}`, 'aria-hidden': 'true' }, h('i'), h('i'), h('i')),
+    h('span', { class: 'design-name' }, d.label),
+    h('span', { class: 'sub' }, d.note))));
+  renderDesignOptions();
+
   mount(
     h('p', {}, h('a', { href: '#/' }, '← Усі групи')),
     h('h1', {}, 'Адмінка'),
+    h('div', { class: 'card' },
+      h('h2', {}, 'Дизайн'),
+      h('p', { class: 'sub' }, 'Змінюється одразу для всіх користувачів.'),
+      designOptions,
+    ),
     h('div', { class: 'card' },
       h('h2', {}, 'Валюта за замовчуванням'),
       h('p', { class: 'sub' }, 'Її першою пропонує форма «Нова група». Уже створені групи не змінюються.'),
@@ -760,7 +821,7 @@ async function renderGroups(showArchive = false) {
         ? h('div', { class: 'hero-amount' }, 'усе розраховано ✓')
         : totalLines.map(([currency, sum]) => h('div', { class: `hero-amount ${sum > 0 ? 'pos' : 'neg'}` },
           h('span', { class: 'hero-sign' }, sum > 0 ? 'вам винні' : 'ви винні'),
-          formatMoney(Math.abs(sum), currency))),
+          bigMoney(Math.abs(sum), currency))),
     ),
     h('div', { class: 'card' },
       groups.length === 0

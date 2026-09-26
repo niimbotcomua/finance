@@ -4,7 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Спільні витрати</title>
+  <meta name="theme-color" content="#0d0d0f">
   <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/mono.css">
+  <script>
+    // Версія дизайну з минулого візиту — одразу, щоб сторінка не «блимала» іншим оформленням.
+    try { document.documentElement.dataset.design = localStorage.getItem('design') || 'dark'; } catch (e) {}
+  </script>
 </head>
 <body>
   <header class="topbar">

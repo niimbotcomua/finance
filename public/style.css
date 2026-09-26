@@ -466,3 +466,6 @@ button.save-tag:not(.dirty) { opacity: 0.45; }
   .icon-button { width: 48px; }
   .tag-row input { padding-left: 12px; padding-right: 12px; }
 }
+
+/* Велика сума: копійки й валюта дрібніше */
+.big-money .cents { font-size: 0.6em; letter-spacing: 0; opacity: 0.8; }
