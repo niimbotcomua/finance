@@ -618,3 +618,10 @@ details.expense > summary,
   details.expense > summary, .expense-cols { column-gap: 8px; grid-template-columns: minmax(0, 1fr) max-content max-content 10px; }
   .expense-amount .amount, .expense-mine .amount, .expense-total .amount { font-size: 14px; }
 }
+
+/* Рядок витрати: назва, під нею — дата й теги в один рядок; довгий тег обрізається «…» */
+.expense-title { overflow-wrap: anywhere; line-height: 1.3; }
+.expense-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-top: 3px; min-width: 0; }
+.expense-meta .sub { flex: 0 0 auto; }
+.expense-meta .tag { margin-left: 0; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; font-size: 11px; line-height: 1.6; }
+.expense-meta .tag-photo { flex: 0 0 auto; }
