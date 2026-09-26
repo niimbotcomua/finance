@@ -253,3 +253,24 @@ ul.list ul.changes li { display: list-item; padding: 1px 0; border: none; }
 
 /* Кнопки «Аналітика» / «Історія змін» — як перемикачі-пігулки */
 .toolbar button { padding: 10px 18px; }
+
+/* Квитанція у формі витрати */
+.receipt { display: grid; gap: 10px; padding: 14px; border-radius: 16px; background: var(--card-2); }
+.receipt-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.receipt-actions button { flex: 1 1 auto; padding: 10px 14px; font-size: 14px; }
+.receipt-actions button.secondary { background: var(--card); }
+.receipt-preview { display: flex; gap: 12px; align-items: flex-start; }
+.receipt-preview img { width: 84px; height: 112px; object-fit: cover; border-radius: 12px; display: block; }
+.receipt-preview .receipt-actions { flex-direction: column; flex: 1; }
+.receipt-results:empty { display: none; }
+.receipt-results { display: grid; gap: 10px; }
+.receipt-results p { margin: 0; }
+ul.receipt-items { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; max-height: 320px; overflow-y: auto; }
+ul.receipt-items li {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  padding: 8px 10px; border-radius: 12px; background: var(--card);
+}
+ul.receipt-items label { display: flex; align-items: center; gap: 10px; color: var(--text); font-size: 14px; min-width: 0; }
+ul.receipt-items label span { overflow-wrap: anywhere; }
+.receipt-sum { display: flex; justify-content: space-between; padding: 0 10px; font-weight: 700; }
+a.receipt-link { font-size: 18px; line-height: 1; padding: 0 2px; }
