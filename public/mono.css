@@ -149,3 +149,4 @@ html[data-design="mono"] .export-tile { background: #f2f2f7; }
 html[data-design="mono"] .export-arrow { background: #fff; }
 html[data-design="mono"] .receipt-toggle { background: #f2f2f7; }
 .design-preview { height: 56px; }
+html[data-design="mono"] ul.list.group-tiles li.group-tile { box-shadow: 0 1px 2px rgb(16 16 40 / 0.04), 0 8px 24px rgb(16 16 40 / 0.05); }

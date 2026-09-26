@@ -977,6 +977,13 @@ function renderAuth(invite = null) {
 
 // ---------- Список груп ----------
 
+/** Баланс групи міткою: «вам винні …» зелена, «ви винні …» червона, «розраховано» сіра. */
+function balancePill(balance, currency) {
+  if (balance > 0) return h('span', { class: 'balance-pill pos' }, `вам винні ${formatMoney(balance, currency)}`);
+  if (balance < 0) return h('span', { class: 'balance-pill neg' }, `ви винні ${formatMoney(-balance, currency)}`);
+  return h('span', { class: 'balance-pill' }, '✓ розраховано');
+}
+
 function balanceLabel(balance, currency = baseCurrency) {
   if (balance > 0) return h('span', { class: 'amount pos' }, `вам винні ${formatMoney(balance, currency)}`);
   if (balance < 0) return h('span', { class: 'amount neg' }, `ви винні ${formatMoney(-balance, currency)}`);
@@ -1023,15 +1030,20 @@ async function renderGroups(showArchive = false) {
     .select('group_id, profiles (id, name, avatar_path)').in('group_id', groups.map((g) => g.id)).order('id'));
   const membersOf = (groupId) => memberRows.filter((r) => r.group_id === groupId && r.profiles).map((r) => r.profiles);
 
+  // Плитка групи: натискається вся (посилання розтягнуто на всю плитку); баланс — міткою внизу праворуч.
   const groupItem = (g) =>
-    h('li', {},
-      h('div', { class: 'group-info' },
+    h('li', { class: 'group-tile' },
+      h('div', { class: 'group-top' },
         h('a', { class: 'group-name', href: `#/groups/${g.id}` }, g.name),
-        h('div', { class: 'group-meta' },
-          avatarStack(membersOf(g.id)),
-          h('span', { class: 'sub' }, `${g.memberCount} учасн.`),
-        ),
-        h('div', { class: 'created' }, `створено ${formatCreated(g.createdAt)}`),
+        h('span', { class: 'group-go', 'aria-hidden': 'true' }, '›'),
+      ),
+      h('div', { class: 'group-meta' },
+        avatarStack(membersOf(g.id)),
+        h('span', { class: 'sub' }, `${g.memberCount} учасн.`),
+      ),
+      h('div', { class: 'group-bottom' },
+        h('span', { class: 'created' }, `створено ${formatCreated(g.createdAt)}`),
+        showArchive ? null : balancePill(g.myBalance, g.currency),
       ),
       showArchive
         ? h('button', {
@@ -1047,7 +1059,7 @@ async function renderGroups(showArchive = false) {
             }
           },
         }, 'Повернути')
-        : balanceLabel(g.myBalance, g.currency),
+        : null,
     );
 
   if (showArchive) {
