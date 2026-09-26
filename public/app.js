@@ -204,13 +204,16 @@ function submitHandler(form, errorEl, action) {
 
 /** Назва, опис, логотип сайту (налаштовує адмін). Доступно й до входу. */
 let siteMeta = null;
+let siteLogos = {}; // окремий логотип для кожного дизайну: { dark, mono, nova }
 const brandingUrl = (path) => supabase.storage.from('branding').getPublicUrl(path).data.publicUrl;
+const logoFor = (design) => siteLogos?.[design] ?? siteMeta?.logo_path ?? null;
 
 function renderBrand() {
   const brand = document.querySelector('.topbar .brand');
   if (!brand) return;
-  if (siteMeta?.logo_path) {
-    brand.replaceChildren(h('img', { class: 'brand-logo', src: brandingUrl(siteMeta.logo_path), alt: siteMeta.site_title ?? 'Логотип' }));
+  const logo = logoFor(document.documentElement.dataset.design);
+  if (logo) {
+    brand.replaceChildren(h('img', { class: 'brand-logo', src: brandingUrl(logo), alt: siteMeta?.site_title ?? 'Логотип' }));
   } else {
     brand.replaceChildren('💸 Спільні витрати');
   }
@@ -218,8 +221,9 @@ function renderBrand() {
 
 async function loadSiteMeta() {
   try {
-    const rows = await run(supabase.rpc('site_meta'));
+    const [rows, logos] = await Promise.all([run(supabase.rpc('site_meta')), run(supabase.rpc('site_logos')).catch(() => ({}))]);
     siteMeta = Array.isArray(rows) ? rows[0] ?? null : rows;
+    siteLogos = logos ?? {};
   } catch {
     siteMeta = null;
   }
@@ -634,7 +638,8 @@ async function renderAdmin() {
     toast('Валюту за замовчуванням збережено');
   }));
 
-  const brandingCard = brandingSettingsCard(await run(supabase.rpc('site_meta')).then((r) => (Array.isArray(r) ? r[0] : r)));
+  await loadSiteMeta(); // свіжі назва, опис і логотипи дизайнів
+  const brandingCard = brandingSettingsCard(siteMeta);
 
   // Перемикач версії дизайну — одразу для всіх користувачів.
   const designOptions = h('div', { class: 'design-options' });
@@ -648,6 +653,7 @@ async function renderAdmin() {
         try {
           await run(supabase.rpc('admin_set_design', { design: key }));
           applyDesign(key);
+          renderBrand();
           toast(`Дизайн «${d.label}» увімкнено для всіх`);
         } catch (err) {
           toast(err.message);
@@ -691,7 +697,6 @@ async function renderAdmin() {
 /** Адмінка: логотип (2:1), назва й опис сайту, картинка-прев'ю для соцмереж. */
 function brandingSettingsCard(meta) {
   const state = {
-    logo: { path: meta?.logo_path ?? null, file: null },
     og: { path: meta?.og_image_path ?? null, file: null },
   };
   const previews = new Map();
@@ -721,28 +726,54 @@ function brandingSettingsCard(meta) {
     input.click();
   };
 
+  // Логотип для кожного дизайну окремо: зберігається одразу після вибору файлу.
+  const setDesignLogo = async (design, file, button) => {
+    button.disabled = true;
+    try {
+      let path = null;
+      if (file) {
+        path = `logo-${design}-${Date.now()}.png`;
+        await run(supabase.storage.from('branding').upload(path, await framedImage(file, 800, 400, 'contain'), { contentType: 'image/png' }));
+      }
+      const old = await run(supabase.rpc('admin_set_design_logo', { design, logo_path: path }));
+      if (old) await supabase.storage.from('branding').remove([old]);
+      await loadSiteMeta();
+      toast(file ? `Логотип для дизайну «${DESIGNS[design].label}» збережено` : 'Логотип прибрано');
+    } catch (err) {
+      toast(err.message);
+    }
+    renderLogos();
+  };
+
+  function renderLogos() {
+    logoBox.replaceChildren(...Object.entries(DESIGNS).map(([design, d]) => {
+      const path = siteLogos?.[design] ?? null;
+      const current = document.documentElement.dataset.design === design;
+      return h('div', { class: 'logo-slot' },
+        h('div', { class: 'logo-slot-head' },
+          h('span', { class: 'design-name' }, d.label),
+          current ? h('span', { class: 'badge' }, 'зараз увімкнено') : null),
+        h('div', { class: `logo-frame logo-frame-${design}` },
+          path ? h('img', { src: brandingUrl(path), alt: `Логотип для дизайну «${d.label}»` }) : h('span', {}, '💸 Спільні витрати')),
+        h('div', { class: 'btn-row' },
+          h('button', {
+            type: 'button', class: 'secondary',
+            onClick: (e) => {
+              const button = e.currentTarget;
+              pickImage((file) => setDesignLogo(design, file, button));
+            },
+          }, path ? '🖼 Замінити' : '🖼 Завантажити'),
+          path && h('button', {
+            type: 'button', class: 'secondary',
+            onClick: (e) => {
+              if (confirm(`Прибрати логотип для дизайну «${d.label}»?`)) setDesignLogo(design, null, e.currentTarget);
+            },
+          }, '✕ Прибрати'),
+        ));
+    }));
+  }
+
   function render() {
-    const logoUrl = urlOf(state.logo, null);
-    logoBox.replaceChildren(
-      h('div', { class: 'logo-frames' },
-        ['dark', 'light'].map((tone) => h('div', { class: `logo-frame ${tone}` },
-          logoUrl ? h('img', { src: logoUrl, alt: 'Логотип' }) : h('span', {}, '💸 Спільні витрати')))),
-      h('div', { class: 'btn-row' },
-        h('button', {
-          type: 'button', class: 'secondary',
-          onClick: () => pickImage(async (file) => {
-            try {
-              state.logo.file = await framedImage(file, 800, 400, 'contain');
-              render();
-            } catch (err) { toast(err.message); }
-          }),
-        }, logoUrl ? '🖼 Інший логотип' : '🖼 Завантажити логотип'),
-        logoUrl && h('button', {
-          type: 'button', class: 'secondary',
-          onClick: () => { state.logo = { path: null, file: null }; render(); },
-        }, '✕ Прибрати'),
-      ),
-    );
     const ogUrl = urlOf(state.og, '/og.png');
     socialCard.replaceChildren(
       h('img', { src: ogUrl, alt: '' }),
@@ -757,9 +788,6 @@ function brandingSettingsCard(meta) {
   descInput.addEventListener('input', render);
 
   const form = h('form', {},
-    h('h3', {}, 'Логотип'),
-    h('p', { class: 'sub' }, 'Показується зліва вгорі замість назви. Пропорція 2:1 (наприклад, 800×400) — інші картинки впишемо в цю рамку. Найкраще — PNG з прозорим тлом.'),
-    logoBox,
     h('h3', {}, 'Прев\'ю для соцмереж і пошуку'),
     h('p', { class: 'sub' }, 'Так виглядатиме посилання на сайт у Telegram, Viber, Facebook. Оновлюється в прев\'ю протягом кількох хвилин (месенджери можуть ще й кешувати старе).'),
     h('label', {}, 'Назва сайту (до 120 символів)', titleInput),
@@ -792,22 +820,27 @@ function brandingSettingsCard(meta) {
     return path;
   };
   form.addEventListener('submit', submitHandler(form, error, async () => {
-    const logoPath = await upload(state.logo, 'logo');
     const ogPath = await upload(state.og, 'og');
     const [old] = await run(supabase.rpc('admin_set_branding', {
-      site_title: titleInput.value, site_description: descInput.value, logo_path: logoPath, og_image_path: ogPath,
+      site_title: titleInput.value, site_description: descInput.value, logo_path: meta?.logo_path ?? null, og_image_path: ogPath,
     }));
-    const stale = [old?.old_logo_path, old?.old_og_image_path].filter(Boolean);
+    const stale = [old?.old_og_image_path].filter(Boolean);
     if (stale.length > 0) await supabase.storage.from('branding').remove(stale);
-    state.logo = { path: logoPath, file: null };
     state.og = { path: ogPath, file: null };
     await loadSiteMeta();
     render();
     toast('Брендинг збережено');
   }));
   render();
+  renderLogos();
 
-  return h('div', { class: 'card' }, h('h2', {}, 'Брендинг і SEO'), form);
+  return h('div', { class: 'card' },
+    h('h2', {}, 'Брендинг і SEO'),
+    h('h3', {}, 'Логотип для кожного дизайну'),
+    h('p', { class: 'sub' }, 'Показується зліва вгорі замість назви. Для кожного дизайну — свій (наприклад, світлий логотип на темну шапку). '
+      + 'Пропорція 2:1 (800×400) — інші картинки впишемо в цю рамку. Найкраще — PNG з прозорим тлом. Зберігається одразу.'),
+    logoBox,
+    form);
 }
 
 // ---------- Вхід / реєстрація ----------
