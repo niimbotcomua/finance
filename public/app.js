@@ -839,7 +839,7 @@ async function renderGroup(groupId) {
     run(supabase.from('groups').select('id, name, currency, invite_token, created_by').eq('id', groupId).maybeSingle()),
     run(supabase.from('group_members').select('user_id, archived_at, profiles (id, name, email, avatar_path)').eq('group_id', groupId).order('id')),
     run(supabase.from('expenses')
-      .select('id, description, amount, paid_by, date, category_id, receipt_path, currency, original_amount, rate, expense_shares (user_id, amount)')
+      .select('id, description, amount, paid_by, date, category_id, receipt_path, receipt_path2, currency, original_amount, rate, expense_shares (user_id, amount)')
       .eq('group_id', groupId)
       .order('date', { ascending: false })
       .order('id', { ascending: false })),
@@ -863,7 +863,7 @@ async function renderGroup(groupId) {
 
   const members = memberRows.map((r) => r.profiles);
   // Квитанції лежать у приватному сховищі — даємо тимчасові посилання на годину.
-  const receiptPaths = expenseRows.map((e) => e.receipt_path).filter(Boolean);
+  const receiptPaths = expenseRows.flatMap((e) => [e.receipt_path, e.receipt_path2]).filter(Boolean);
   const receiptUrls = new Map();
   if (receiptPaths.length > 0) {
     const { data } = await supabase.storage.from('receipts').createSignedUrls(receiptPaths, 3600);
@@ -877,8 +877,9 @@ async function renderGroup(groupId) {
     date: e.date,
     categoryId: e.category_id,
     category: categories.find((c) => c.id === e.category_id) ?? null,
-    receiptPath: e.receipt_path,
-    receiptUrl: receiptUrls.get(e.receipt_path) ?? null,
+    // Фото витрати: [фото 1, фото 2] (null — порожній слот).
+    photoPaths: [e.receipt_path, e.receipt_path2],
+    photoUrls: [e.receipt_path, e.receipt_path2].map((path) => (path ? receiptUrls.get(path) ?? null : null)),
     edited: history.some((x) => x.action === 'updated' && x.expense_id === e.id),
     shares: e.expense_shares.map((s) => ({ userId: s.user_id, amount: Number(s.amount) })),
     currency: e.currency,
@@ -1448,13 +1449,59 @@ function membersCard(group, members, reload) {
         ),
       ),
     ),
-    invitePanel(group, form, reload),
+    invitePanel(group, form, reload, members),
   );
 }
 
 /** Кнопка «Запросити учасника», що розгортає посилання-запрошення та додавання за email. */
-function invitePanel(group, emailForm, reload) {
+/**
+ * «Люди, яких ви знаєте»: учасники інших ваших груп, яких ще немає в цій (адміну — усі користувачі).
+ * Додаються одним натиском, без посилання й без введення email.
+ */
+function knownPeopleBlock(group, members, reload) {
+  const box = h('div', { class: 'known-people' });
+  const memberIds = new Set(members.map((m) => m.id));
+  (async () => {
+    const people = currentUser.isAdmin
+      ? await run(supabase.rpc('admin_users'))
+      : await run(supabase.from('profiles').select('id, name, email, avatar_path').order('name'));
+    const candidates = people.filter((p) => !memberIds.has(p.id));
+    if (candidates.length === 0) return;
+    box.replaceChildren(
+      h('h3', {}, 'Додати зі знайомих'),
+      h('p', { class: 'sub' }, currentUser.isAdmin
+        ? 'Усі зареєстровані користувачі, яких ще немає в групі (цей список бачите, бо ви адміністратор).'
+        : 'Люди з ваших інших груп, яких ще немає в цій.'),
+      h('ul', { class: 'list' }, candidates.map((p) =>
+        h('li', {},
+          h('div', { class: 'person' },
+            avatar(p),
+            h('div', {}, h('div', {}, p.name), h('div', { class: 'sub' }, p.email)),
+          ),
+          h('button', {
+            type: 'button', class: 'secondary',
+            onClick: async (e) => {
+              const button = e.currentTarget;
+              button.disabled = true;
+              try {
+                await run(supabase.rpc('add_group_member', { gid: group.id, member_email: p.email }));
+                toast(`${p.name} — у групі`);
+                reload();
+              } catch (err) {
+                toast(err.message);
+                button.disabled = false;
+              }
+            },
+          }, 'Додати'),
+        ))),
+    );
+  })().catch(() => { /* список — лише підказка; без нього лишаються посилання й email */ });
+  return box;
+}
+
+function invitePanel(group, emailForm, reload, members = []) {
   const body = h('div', { class: 'invite-body', id: `invite-${group.id}`, hidden: !groupUi.inviteOpen },
+    knownPeopleBlock(group, members, reload),
     inviteBlock(group, reload),
     h('p', { class: 'sub' }, 'Або додайте за email, якщо людина вже зареєстрована:'),
     emailForm,
@@ -1587,22 +1634,31 @@ async function renderJoin(token) {
 }
 
 
+/** Скільки фото можна прикріпити до витрати. */
+const MAX_PHOTOS = 2;
+
 /**
- * Блок «Квитанція» у формі витрати: сфотографувати / вибрати фото, переглянути, розпізнати позиції.
- * Повертає елемент і стан: нове фото (file), чи прибрали наявне (removed).
+ * Блок «Фото» у формі витрати: до двох фото (чек, товар…) — сфотографувати / вибрати, переглянути,
+ * розпізнати суми з чека. existingUrls — посилання на вже прикріплені фото [фото 1, фото 2].
+ * Повертає елемент і стан слотів: [{ url, file, removed }] — нове фото чи прибране наявне.
  */
-function receiptField(existingUrl, amountInput, descriptionInput) {
-  const state = { file: null, removed: false };
-  let previewUrl = null;
+function receiptField(existingUrls, amountInput, descriptionInput) {
+  const slots = Array.from({ length: MAX_PHOTOS }, (_, i) => ({ url: existingUrls[i] ?? null, file: null, removed: false }));
+  const previews = new Map();
+  const hasPhoto = (slot) => Boolean(slot.file || (slot.url && !slot.removed));
+  const freeSlots = () => slots.filter((slot) => !hasPhoto(slot));
 
   const pick = (capture) => {
-    const input = h('input', { type: 'file', accept: 'image/*', capture, hidden: true });
+    const input = h('input', { type: 'file', accept: 'image/*', capture, multiple: !capture, hidden: true });
     input.addEventListener('change', () => {
-      const file = input.files[0];
+      const files = [...input.files];
       input.remove();
-      if (!file) return;
-      state.file = file;
-      state.removed = false;
+      const free = freeSlots();
+      if (files.length > free.length) toast(`Можна додати ще ${free.length} фото — зайві пропущено`);
+      files.slice(0, free.length).forEach((file, i) => {
+        free[i].file = file;
+        free[i].removed = false;
+      });
       render();
     });
     document.body.append(input); // деякі браузери не відкривають вибір файлу для від'єднаного input
@@ -1612,21 +1668,20 @@ function receiptField(existingUrl, amountInput, descriptionInput) {
   const results = h('div', { class: 'receipt-results' });
   const box = h('div', { class: 'receipt' });
 
-  function currentImage() {
-    if (state.file) {
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
-      previewUrl = URL.createObjectURL(state.file);
-      return previewUrl;
+  function imageOf(slot) {
+    if (slot.file) {
+      if (!previews.has(slot.file)) previews.set(slot.file, URL.createObjectURL(slot.file));
+      return previews.get(slot.file);
     }
-    return state.removed ? null : existingUrl;
+    return slot.removed ? null : slot.url;
   }
 
-  async function recognize(button) {
+  async function recognize(slot, button) {
     button.disabled = true;
     const status = h('p', { class: 'sub' });
     results.replaceChildren(status);
     try {
-      const image = state.file ? await scaledJpeg(state.file, 2000) : existingUrl;
+      const image = slot.file ? await scaledJpeg(slot.file, 2000) : slot.url;
       const text = await recognizeText(image, (msg) => { status.textContent = msg; });
       showItems(parseReceipt(text));
     } catch (err) {
@@ -1680,46 +1735,51 @@ function receiptField(existingUrl, amountInput, descriptionInput) {
   }
 
   function render() {
-    const src = currentImage();
     results.replaceChildren();
-    box.replaceChildren(
-      h('div', { class: 'receipt-head' }, h('span', { class: 'sub' }, 'Квитанція (необов\'язково)')),
-      src
-        ? h('div', { class: 'receipt-preview' },
-          h('a', { href: src, target: '_blank', rel: 'noopener' }, h('img', { src, alt: 'Фото квитанції' })),
-          h('div', { class: 'receipt-actions' },
-            h('button', { type: 'button', onClick: (e) => recognize(e.currentTarget) }, '🔍 Розпізнати суми'),
-            h('button', { type: 'button', class: 'secondary', onClick: () => pick('environment') }, '📷 Інше фото'),
-            h('button', {
-              type: 'button', class: 'secondary',
-              onClick: () => {
-                state.file = null;
-                state.removed = true;
-                render();
-              },
-            }, '✕ Прибрати'),
-          ))
-        : h('div', { class: 'receipt-actions' },
-          h('button', { type: 'button', class: 'secondary', onClick: () => pick('environment') }, '📷 Сфотографувати'),
-          h('button', { type: 'button', class: 'secondary', onClick: () => pick(null) }, '🖼 Вибрати фото'),
-        ),
+    const filled = slots.filter(hasPhoto);
+    const parts = [
+      h('div', { class: 'receipt-head' }, h('span', { class: 'sub' }, `Фото чека чи покупки (до ${MAX_PHOTOS}, необов'язково)`)),
+      filled.length > 0 && h('div', { class: 'photo-grid' }, filled.map((slot) => {
+        const src = imageOf(slot);
+        return h('div', { class: 'photo-item' },
+          h('a', { href: src, target: '_blank', rel: 'noopener' }, h('img', { src, alt: 'Фото до витрати' })),
+          h('button', {
+            type: 'button', class: 'photo-remove', title: 'Прибрати фото', 'aria-label': 'Прибрати фото',
+            onClick: () => {
+              slot.file = null;
+              slot.removed = true;
+              render();
+            },
+          }, '✕'),
+          h('button', { type: 'button', class: 'secondary photo-scan', onClick: (e) => recognize(slot, e.currentTarget) }, '🔍 Розпізнати'),
+        );
+      })),
+      freeSlots().length > 0 && h('div', { class: 'receipt-actions' },
+        h('button', { type: 'button', class: 'secondary', onClick: () => pick('environment') }, '📷 Сфотографувати'),
+        h('button', { type: 'button', class: 'secondary', onClick: () => pick(null) }, filled.length > 0 ? '🖼 Додати ще фото' : '🖼 Вибрати фото'),
+      ),
       results,
-    );
+    ];
+    box.replaceChildren(...parts.filter(Boolean));
   }
   render();
-  return { el: box, state };
+  return { el: box, state: slots };
 }
 
-/** Прикріплює до витрати нове фото квитанції або прибирає наявне; старий файл видаляє. */
-async function saveReceipt(groupId, expenseId, state) {
-  if (!state.file && !state.removed) return;
-  let path = null;
-  if (state.file) {
-    path = `${groupId}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.jpg`;
-    await run(supabase.storage.from('receipts').upload(path, await scaledJpeg(state.file), { contentType: 'image/jpeg' }));
+/** Зберігає зміни фото витрати: завантажує нові, прибирає видалені; старі файли видаляє зі сховища. */
+async function saveReceipt(groupId, expenseId, slots) {
+  const oldPaths = [];
+  for (const [i, slot] of slots.entries()) {
+    if (!slot.file && !slot.removed) continue;
+    let path = null;
+    if (slot.file) {
+      path = `${groupId}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.jpg`;
+      await run(supabase.storage.from('receipts').upload(path, await scaledJpeg(slot.file), { contentType: 'image/jpeg' }));
+    }
+    const oldPath = await run(supabase.rpc('set_expense_photo', { expense_id: expenseId, slot: i + 1, photo_path: path }));
+    if (oldPath) oldPaths.push(oldPath);
   }
-  const oldPath = await run(supabase.rpc('set_expense_receipt', { expense_id: expenseId, receipt_path: path }));
-  if (oldPath) await supabase.storage.from('receipts').remove([oldPath]);
+  if (oldPaths.length > 0) await supabase.storage.from('receipts').remove(oldPaths);
 }
 
 /** Форма нової витрати; якщо передано editing — редагування цієї витрати. */
@@ -1832,7 +1892,7 @@ function expenseFormCard(groupId, members, categories, rates, reload, editing = 
   const descriptionInput = h('input', {
     name: 'description', required: true, maxLength: 200, placeholder: 'Напр. «Продукти»', value: editing?.description ?? '',
   });
-  const receipt = receiptField(editing?.receiptUrl ?? null, amountInput, descriptionInput);
+  const receipt = receiptField(editing?.photoUrls ?? [], amountInput, descriptionInput);
 
   const form = h('form', {},
     receipt.el,
@@ -2001,7 +2061,8 @@ function expensesCard(groupId, expenses, profileOf, reload, onEdit) {
           `${currencyLabel(e.currency)} → ${currencyLabel(baseCurrency)}: 1 ${currencySymbol(e.currency)} = ${formatRate(e.rate)} ${currencySymbol(baseCurrency)}`) : null,
         h('div', { class: 'expense-actions' },
           e.edited ? h('span', { class: 'sub' }, 'змінено') : null,
-          e.receiptUrl && h('a', { class: 'receipt-link', href: e.receiptUrl, target: '_blank', rel: 'noopener', title: 'Фото квитанції' }, '🧾'),
+          e.photoUrls.filter(Boolean).map((url, i) =>
+            h('a', { class: 'photo-thumb', href: url, target: '_blank', rel: 'noopener', title: `Фото ${i + 1}` }, h('img', { src: url, alt: `Фото ${i + 1}` }))),
           h('button', { class: 'link edit', title: 'Редагувати витрату', onClick: () => onEdit(e) }, '✎ Редагувати'),
           h('button', {
             class: 'link',
@@ -2010,7 +2071,8 @@ function expensesCard(groupId, expenses, profileOf, reload, onEdit) {
               if (!confirm(`Видалити витрату «${e.description}»?`)) return;
               try {
                 await run(supabase.from('expenses').delete().eq('id', e.id));
-                if (e.receiptPath) await supabase.storage.from('receipts').remove([e.receiptPath]);
+                const paths = e.photoPaths.filter(Boolean);
+                if (paths.length > 0) await supabase.storage.from('receipts').remove(paths);
               } catch (err) {
                 toast(err.message);
               }

@@ -469,3 +469,20 @@ button.save-tag:not(.dirty) { opacity: 0.45; }
 
 /* Велика сума: копійки й валюта дрібніше */
 .big-money .cents { font-size: 0.6em; letter-spacing: 0; opacity: 0.8; }
+
+/* Фото до витрати (до 2) */
+.photo-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.photo-item { position: relative; display: grid; gap: 6px; }
+.photo-item img { width: 100%; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 12px; display: block; }
+.photo-remove {
+  position: absolute; top: 6px; right: 6px; width: 30px; height: 30px; padding: 0;
+  border-radius: 50%; background: rgb(0 0 0 / 0.6); color: #fff; font-size: 14px; font-weight: 700;
+}
+.photo-scan { padding: 8px 10px; font-size: 13px; }
+a.photo-thumb { display: inline-block; line-height: 0; }
+a.photo-thumb img { width: 34px; height: 34px; object-fit: cover; border-radius: 8px; }
+
+/* Додати зі знайомих */
+.known-people:empty { display: none; }
+.known-people { margin-top: 14px; }
+.known-people ul.list li > button.secondary { padding: 8px 16px; font-size: 14px; }

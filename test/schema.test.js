@@ -432,3 +432,19 @@ test('дизайн застосунку: перемикає лише адмін'
   assert.equal(await current(), 'mono');
   await as('anna', 'select public.admin_set_design($1)', ['dark']);
 });
+
+test('до витрати можна прикріпити 2 фото', async () => {
+  const [{ create_group: gid }] = await as('bohdan', 'select public.create_group($1)', ['Два фото']);
+  const [{ add_expense: eid }] = await as('bohdan',
+    'select public.add_expense(gid => $1, description => $2, amount => 100, paid_by => $3, shares => $4::jsonb)',
+    [gid, 'Чай', users.bohdan, JSON.stringify([{ user_id: users.bohdan, amount: 100 }])]);
+  const setPhoto = (who, slot, p) => as(who, 'select public.set_expense_photo(expense_id => $1, slot => $2, photo_path => $3) as old', [eid, slot, p]);
+  assert.equal((await setPhoto('bohdan', 1, `${gid}/a.jpg`))[0].old, null);
+  assert.equal((await setPhoto('bohdan', 2, `${gid}/b.jpg`))[0].old, null);
+  await rejects(setPhoto('bohdan', 3, `${gid}/c.jpg`), 'не більше 2');
+  await rejects(setPhoto('stranger', 2, `${gid}/c.jpg`), 'Витрату не знайдено');
+  await rejects(setPhoto('bohdan', 2, `${gid + 1}/c.jpg`), 'Некоректний файл');
+  const [row] = await as('bohdan', 'select receipt_path, receipt_path2 from public.expenses where id = $1', [eid]);
+  assert.deepEqual([row.receipt_path, row.receipt_path2], [`${gid}/a.jpg`, `${gid}/b.jpg`]);
+  assert.equal((await setPhoto('bohdan', 2, null))[0].old, `${gid}/b.jpg`);
+});
