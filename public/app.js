@@ -1,4 +1,11 @@
-// Клієнтська частина: невеликий SPA без фреймворків.
+// Клієнтська частина: невеликий SPA без фреймворків; дані зберігаються в Supabase.
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/+esm';
+import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config.js';
+import { computeBalances, simplifyDebts, splitEqually } from './balances.js';
+
+const configured = SUPABASE_URL.startsWith('https://') && !SUPABASE_ANON_KEY.includes('ВСТАВТЕ');
+const supabase = configured ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
 const app = document.getElementById('app');
 const userbox = document.getElementById('userbox');
 const toastEl = document.getElementById('toast');
@@ -49,20 +56,32 @@ function toast(message) {
   toast.timer = setTimeout(() => (toastEl.hidden = true), 3000);
 }
 
-async function api(method, path, body) {
-  const res = await fetch(`/api${path}`, {
-    method,
-    headers: body ? { 'content-type': 'application/json' } : {},
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const data = await res.json().catch(() => ({}));
-  if (res.status === 401 && path !== '/auth/login') {
-    currentUser = null;
-    renderUserbox();
-    if (!location.hash.startsWith('#/login')) location.hash = '#/login';
-  }
-  if (!res.ok) throw new Error(data.error || `Помилка ${res.status}`);
+const ERROR_TRANSLATIONS = {
+  'Invalid login credentials': 'Невірний email або пароль',
+  'User already registered': 'Користувач з таким email вже існує',
+  'Email not confirmed': 'Спершу підтвердіть email — перейдіть за посиланням у листі',
+  'Password should be at least': 'Пароль занадто короткий (мінімум 8 символів)',
+  'rate limit': 'Забагато спроб, спробуйте трохи пізніше',
+  'row-level security': 'Недостатньо прав для цієї дії',
+};
+
+function translateError(message = '') {
+  const key = Object.keys(ERROR_TRANSLATIONS).find((k) => message.includes(k));
+  return key ? ERROR_TRANSLATIONS[key] : message || 'Щось пішло не так';
+}
+
+/** Розпаковує відповідь Supabase: повертає data або кидає помилку українською. */
+async function run(request) {
+  const { data, error } = await request;
+  if (error) throw new Error(translateError(error.message));
   return data;
+}
+
+async function loadCurrentUser() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return null;
+  const profile = await run(supabase.from('profiles').select('id, name, email').eq('id', session.user.id).maybeSingle());
+  return profile ?? { id: session.user.id, email: session.user.email, name: session.user.email };
 }
 
 /** Обробник форми з блокуванням кнопки та показом помилки. */
@@ -92,7 +111,7 @@ function renderUserbox() {
     h('button', {
       class: 'secondary',
       onClick: async () => {
-        await api('POST', '/auth/logout', {});
+        await supabase.auth.signOut();
         currentUser = null;
         renderUserbox();
         location.hash = '#/login';
@@ -130,9 +149,28 @@ function renderAuth() {
   }
 
   form.addEventListener('submit', submitHandler(form, error, async (data) => {
-    const payload = Object.fromEntries(data);
-    const { user } = await api('POST', mode === 'login' ? '/auth/login' : '/auth/register', payload);
-    currentUser = user;
+    const email = String(data.get('email')).trim();
+    const password = String(data.get('password'));
+    if (mode === 'login') {
+      await run(supabase.auth.signInWithPassword({ email, password }));
+    } else {
+      const result = await run(supabase.auth.signUp({
+        email,
+        password,
+        options: { data: { name: String(data.get('name')).trim() }, emailRedirectTo: location.origin },
+      }));
+      if (!result.session) {
+        mount(
+          h('div', { class: 'card auth' },
+            h('h1', {}, 'Перевірте пошту'),
+            h('p', {}, `Ми надіслали лист на ${email}. Перейдіть за посиланням у ньому, щоб підтвердити реєстрацію, а потім увійдіть.`),
+            h('a', { href: '#/login', onClick: () => renderAuth() }, '← До входу'),
+          ),
+        );
+        return;
+      }
+    }
+    currentUser = await loadCurrentUser();
     renderUserbox();
     location.hash = '#/';
   }));
@@ -157,7 +195,12 @@ function balanceLabel(balance) {
 }
 
 async function renderGroups() {
-  const { groups } = await api('GET', '/groups');
+  const groups = (await run(supabase.rpc('my_groups'))).map((g) => ({
+    id: g.id,
+    name: g.name,
+    memberCount: Number(g.member_count),
+    myBalance: Number(g.my_balance),
+  }));
   const error = h('div', { class: 'error' });
   const form = h('form', {},
     h('div', { class: 'row' },
@@ -167,8 +210,8 @@ async function renderGroups() {
     error,
   );
   form.addEventListener('submit', submitHandler(form, error, async (data) => {
-    const { group } = await api('POST', '/groups', { name: data.get('name') });
-    location.hash = `#/groups/${group.id}`;
+    const groupId = await run(supabase.rpc('create_group', { group_name: data.get('name') }));
+    location.hash = `#/groups/${groupId}`;
   }));
 
   const total = groups.reduce((sum, g) => sum + g.myBalance, 0);
@@ -198,8 +241,37 @@ async function renderGroups() {
 // ---------- Сторінка групи ----------
 
 async function renderGroup(groupId) {
-  const data = await api('GET', `/groups/${groupId}`);
-  const { group, members, expenses, settlements, balances, suggestedTransfers } = data;
+  const [group, memberRows, expenseRows, settlementRows] = await Promise.all([
+    run(supabase.from('groups').select('id, name, currency').eq('id', groupId).maybeSingle()),
+    run(supabase.from('group_members').select('profiles (id, name, email)').eq('group_id', groupId).order('id')),
+    run(supabase.from('expenses')
+      .select('id, description, amount, paid_by, date, expense_shares (user_id, amount)')
+      .eq('group_id', groupId)
+      .order('date', { ascending: false })
+      .order('id', { ascending: false })),
+    run(supabase.from('settlements')
+      .select('id, from_user, to_user, amount, date')
+      .eq('group_id', groupId)
+      .order('date', { ascending: false })
+      .order('id', { ascending: false })),
+  ]);
+  if (!group) throw new Error('Групу не знайдено');
+
+  const members = memberRows.map((r) => r.profiles);
+  const expenses = expenseRows.map((e) => ({
+    id: e.id,
+    description: e.description,
+    amount: Number(e.amount),
+    paidBy: e.paid_by,
+    date: e.date,
+    shares: e.expense_shares.map((s) => ({ userId: s.user_id, amount: Number(s.amount) })),
+  }));
+  const settlements = settlementRows.map((s) => ({
+    id: s.id, fromUser: s.from_user, toUser: s.to_user, amount: Number(s.amount), date: s.date,
+  }));
+  const balanceMap = computeBalances(members.map((m) => m.id), expenses, settlements);
+  const balances = [...balanceMap].map(([userId, balance]) => ({ userId, balance }));
+  const suggestedTransfers = simplifyDebts(balanceMap);
   const nameOf = (id) => members.find((m) => m.id === id)?.name ?? '—';
   const reload = () => renderGroup(groupId);
 
@@ -253,7 +325,9 @@ function transfersCard(groupId, transfers, nameOf, reload) {
               onClick: async (e) => {
                 e.target.disabled = true;
                 try {
-                  await api('POST', `/groups/${groupId}/settlements`, { fromUser: t.from, toUser: t.to, amount: t.amount });
+                  await run(supabase.from('settlements').insert({
+                    group_id: groupId, from_user: t.from, to_user: t.to, amount: t.amount,
+                  }));
                   toast('Розрахунок записано');
                   reload();
                 } catch (err) {
@@ -278,8 +352,8 @@ function membersCard(groupId, members, balances, reload) {
     error,
   );
   form.addEventListener('submit', submitHandler(form, error, async (data) => {
-    const { member } = await api('POST', `/groups/${groupId}/members`, { email: data.get('email') });
-    toast(`${member.name} тепер у групі`);
+    await run(supabase.rpc('add_group_member', { gid: groupId, member_email: data.get('email') }));
+    toast('Учасника додано');
     reload();
   }));
 
@@ -296,7 +370,7 @@ function membersCard(groupId, members, balances, reload) {
               onClick: async () => {
                 if (!confirm(`Видалити ${m.name} з групи?`)) return;
                 try {
-                  await api('DELETE', `/groups/${groupId}/members/${m.id}`);
+                  await run(supabase.rpc('remove_group_member', { gid: groupId, member: m.id }));
                   reload();
                 } catch (err) {
                   toast(err.message);
@@ -356,13 +430,13 @@ function expenseFormCard(groupId, members, reload) {
     const amount = parseMoney(data.get('amount'));
     if (!amount) throw new Error('Вкажіть коректну суму, напр. 150 або 99,90');
 
-    let split;
+    let shares;
     if (data.get('splitType') === 'equal') {
-      const participants = data.getAll('participant').map(Number);
+      const participants = data.getAll('participant').map(String);
       if (participants.length === 0) throw new Error('Оберіть хоча б одного учасника');
-      split = { type: 'equal', participants };
+      shares = splitEqually(amount, participants);
     } else {
-      const shares = [];
+      shares = [];
       for (const m of members) {
         const raw = String(data.get(`share-${m.id}`) ?? '').trim();
         if (!raw) continue;
@@ -374,16 +448,16 @@ function expenseFormCard(groupId, members, reload) {
       if (total !== amount) {
         throw new Error(`Сума часток (${formatMoney(total)}) не дорівнює сумі витрати (${formatMoney(amount)})`);
       }
-      split = { type: 'exact', shares };
     }
 
-    await api('POST', `/groups/${groupId}/expenses`, {
-      description: data.get('description'),
+    await run(supabase.rpc('add_expense', {
+      gid: groupId,
+      description: String(data.get('description')).trim(),
       amount,
-      paidBy: Number(data.get('paidBy')),
-      date: data.get('date') || undefined,
-      split,
-    });
+      paid_by: String(data.get('paidBy')),
+      shares: shares.map((s) => ({ user_id: s.userId, amount: s.amount })),
+      expense_date: data.get('date') || today(),
+    }));
     toast('Витрату додано');
     reload();
   }));
@@ -412,12 +486,16 @@ function settlementFormCard(groupId, members, reload) {
   form.addEventListener('submit', submitHandler(form, error, async (data) => {
     const amount = parseMoney(data.get('amount'));
     if (!amount) throw new Error('Вкажіть коректну суму');
-    await api('POST', `/groups/${groupId}/settlements`, {
-      fromUser: Number(data.get('fromUser')),
-      toUser: Number(data.get('toUser')),
+    const fromUser = String(data.get('fromUser'));
+    const toUser = String(data.get('toUser'));
+    if (fromUser === toUser) throw new Error('Оберіть двох різних учасників');
+    await run(supabase.from('settlements').insert({
+      group_id: groupId,
+      from_user: fromUser,
+      to_user: toUser,
       amount,
-      date: data.get('date') || undefined,
-    });
+      date: data.get('date') || today(),
+    }));
     toast('Переказ записано');
     reload();
   }));
@@ -445,7 +523,7 @@ function expensesCard(groupId, expenses, nameOf, reload) {
                 title: 'Видалити витрату',
                 onClick: async () => {
                   if (!confirm(`Видалити витрату «${e.description}»?`)) return;
-                  await api('DELETE', `/groups/${groupId}/expenses/${e.id}`).catch((err) => toast(err.message));
+                  await run(supabase.from('expenses').delete().eq('id', e.id)).catch((err) => toast(err.message));
                   reload();
                 },
               }, '✕'),
@@ -474,7 +552,7 @@ function settlementsCard(groupId, settlements, nameOf, reload) {
               title: 'Скасувати переказ',
               onClick: async () => {
                 if (!confirm('Скасувати цей переказ?')) return;
-                await api('DELETE', `/groups/${groupId}/settlements/${s.id}`).catch((err) => toast(err.message));
+                await run(supabase.from('settlements').delete().eq('id', s.id)).catch((err) => toast(err.message));
                 reload();
               },
             }, '✕'),
@@ -490,13 +568,13 @@ function settlementsCard(groupId, settlements, nameOf, reload) {
 async function route() {
   const hash = location.hash || '#/';
   try {
+    if (!currentUser) {
+      currentUser = await loadCurrentUser();
+      renderUserbox();
+    }
     if (!currentUser && hash !== '#/login') {
-      try {
-        currentUser = (await api('GET', '/me')).user;
-        renderUserbox();
-      } catch {
-        return; // api() уже перенаправив на #/login
-      }
+      location.hash = '#/login';
+      return;
     }
     if (hash === '#/login') {
       if (currentUser) location.hash = '#/';
@@ -513,5 +591,31 @@ async function route() {
   }
 }
 
-window.addEventListener('hashchange', route);
-route();
+async function start() {
+  if (!supabase) {
+    mount(
+      h('div', { class: 'card' },
+        h('h1', {}, 'Застосунок ще не налаштовано'),
+        h('p', {}, 'Вкажіть Project URL та anon key вашого проєкту Supabase у файлі public/config.js.'),
+      ),
+    );
+    return;
+  }
+  // Після переходу за посиланням з листа Supabase повертає токен у #…; getSession() його обробляє.
+  await supabase.auth.getSession();
+  if (/access_token|error_description/.test(location.hash)) {
+    const params = new URLSearchParams(location.hash.slice(1));
+    if (params.get('error_description')) toast(params.get('error_description'));
+    history.replaceState(null, '', `${location.pathname}#/`);
+  }
+  supabase.auth.onAuthStateChange((event) => {
+    if (event === 'SIGNED_OUT') {
+      currentUser = null;
+      renderUserbox();
+    }
+  });
+  window.addEventListener('hashchange', route);
+  route();
+}
+
+start();

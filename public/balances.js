@@ -42,7 +42,7 @@ export function simplifyDebts(balances) {
     if (balance > 0) creditors.push({ userId, amount: balance });
     else if (balance < 0) debtors.push({ userId, amount: -balance });
   }
-  const byAmountDesc = (a, b) => b.amount - a.amount || a.userId - b.userId;
+  const byAmountDesc = (a, b) => b.amount - a.amount || String(a.userId).localeCompare(String(b.userId));
   creditors.sort(byAmountDesc);
   debtors.sort(byAmountDesc);
 

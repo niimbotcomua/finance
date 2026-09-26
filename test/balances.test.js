@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { computeBalances, simplifyDebts, splitEqually } from '../src/balances.js';
+import { computeBalances, simplifyDebts, splitEqually } from '../public/balances.js';
 
 test('splitEqually розподіляє залишок копійок між першими учасниками', () => {
   assert.deepEqual(splitEqually(1000, [1, 2, 3]), [

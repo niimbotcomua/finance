@@ -4,15 +4,14 @@
   "description": "Веб-застосунок для ведення спільних витрат між користувачами",
   "type": "module",
   "private": true,
-  "engines": {
-    "node": ">=22.13"
-  },
   "scripts": {
-    "start": "node --disable-warning=ExperimentalWarning server.js",
-    "dev": "node --disable-warning=ExperimentalWarning --watch server.js",
-    "test": "node --disable-warning=ExperimentalWarning --test"
+    "dev": "node scripts/serve.js",
+    "test": "node --test"
   },
-  "dependencies": {
-    "express": "^5.2.1"
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

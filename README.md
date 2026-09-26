@@ -3,63 +3,54 @@
 Веб-застосунок для ведення спільних витрат між користувачами (на кшталт Splitwise):
 створюйте групи, додавайте витрати й одразу бачте, хто кому скільки винен.
 
+**Стек:** статичний фронтенд (HTML/CSS/JS без фреймворків) на **Vercel** + **Supabase**
+(Postgres, автентифікація, Row Level Security). Окремого сервера немає.
+
 ## Можливості
 
-- Реєстрація та вхід (паролі — scrypt, сесії в HttpOnly-cookie).
-- Групи: «Квартира», «Відпустка», «Офіс» тощо; додавання учасників за email.
-- Витрати: хто платив, дата, розподіл **порівну** між обраними учасниками або **точними сумами**.
-- Баланси кожного учасника та **спрощення боргів** — мінімальний набір переказів «хто → кому».
-- Запис повернення боргу (кнопка «Сплачено» або вручну), скасування переказів і видалення витрат.
-- Усі суми зберігаються в копійках (цілі числа) — без похибок округлення.
+- Реєстрація та вхід через Supabase Auth (email + пароль, підтвердження пошти).
+- Групи; додавання учасників за email (учасник має бути зареєстрований).
+- Витрати: хто платив, дата, розподіл **порівну** або **точними сумами**.
+- Баланси учасників і **спрощення боргів** — мінімальний набір переказів «хто → кому».
+- Запис повернення боргу (кнопка «Сплачено» або вручну), скасування переказів, видалення витрат.
+- Суми зберігаються в копійках (цілі числа) — без похибок округлення.
+- Кожен бачить лише свої групи: доступ перевіряє сама база (RLS).
 
-## Запуск
+## Розгортання
 
-Потрібен Node.js ≥ 22.13 (використовується вбудований `node:sqlite`).
+### 1. Supabase
+
+1. Створіть проєкт на [supabase.com](https://supabase.com) (регіон — Central EU, Frankfurt).
+2. **SQL Editor → New query** → вставте вміст [`supabase/schema.sql`](supabase/schema.sql) → **Run**.
+3. **Authentication → URL Configuration → Site URL**: вкажіть адресу сайту на Vercel
+   (напр. `https://finance-xxx.vercel.app`), щоб посилання з листів вели на ваш сайт.
+4. **Project Settings → API**: скопіюйте *Project URL* та *anon public key* у
+   [`public/config.js`](public/config.js). Ключ `service_role` / `secret` туди **не** вставляйте.
+
+За бажання підтвердження email можна вимкнути: **Authentication → Sign In / Providers → Email → Confirm email**.
+
+### 2. Vercel
+
+1. [vercel.com](https://vercel.com) → **Add New… → Project** → імпортуйте цей репозиторій.
+2. Налаштування вже задані у [`vercel.json`](vercel.json) (без збірки, сайт — папка `public/`). Натисніть **Deploy**.
+3. Кожен `git push` автоматично оновлює сайт.
+
+## Локальна розробка
 
 ```bash
 npm install
-npm start          # http://localhost:3000
-npm test           # тести
+npm run dev     # http://localhost:3000 (використовує Supabase з public/config.js)
+npm test        # тести логіки та SQL-схеми (Postgres у WASM через PGlite)
 ```
-
-Змінні середовища:
-
-| Змінна        | За замовчуванням     | Опис                                          |
-|---------------|----------------------|-----------------------------------------------|
-| `PORT`        | `3000`               | Порт HTTP-сервера                             |
-| `DB_PATH`     | `./data/finance.db`  | Шлях до файлу бази SQLite                     |
-| `TRUST_PROXY` | —                    | `1`, якщо застосунок за reverse proxy (HTTPS) |
 
 ## Структура
 
 ```
-server.js            точка входу
-src/app.js           Express-застосунок і REST API
-src/db.js            схема SQLite
-src/auth.js          паролі, сесії, cookie
-src/balances.js      розподіл сум, баланси, спрощення боргів
-public/              клієнт (HTML/CSS/JS без фреймворків)
+public/index.html    сторінка
+public/app.js        інтерфейс і робота з Supabase
+public/balances.js   розподіл сум, баланси, спрощення боргів
+public/config.js     адреса та публічний ключ Supabase
+supabase/schema.sql  таблиці, правила доступу (RLS) і функції бази
 test/                тести (node:test)
+vercel.json          налаштування Vercel
 ```
-
-## API (коротко)
-
-Суми в запитах і відповідях — цілі числа в копійках.
-
-| Метод  | Шлях                                        | Опис                                           |
-|--------|---------------------------------------------|------------------------------------------------|
-| POST   | `/api/auth/register`, `/api/auth/login`     | `{ email, password, name? }`                   |
-| POST   | `/api/auth/logout`                          |                                                |
-| GET    | `/api/me`                                   | Поточний користувач                            |
-| GET    | `/api/groups`                               | Мої групи з моїм балансом                      |
-| POST   | `/api/groups`                               | `{ name }`                                     |
-| GET    | `/api/groups/:id`                           | Учасники, витрати, баланси, перекази           |
-| POST   | `/api/groups/:id/members`                   | `{ email }`                                    |
-| DELETE | `/api/groups/:id/members/:userId`           | Лише для учасника без історії в групі          |
-| POST   | `/api/groups/:id/expenses`                  | `{ description, amount, paidBy, date, split }` |
-| DELETE | `/api/groups/:id/expenses/:expenseId`       |                                                |
-| POST   | `/api/groups/:id/settlements`               | `{ fromUser, toUser, amount, date }`           |
-| DELETE | `/api/groups/:id/settlements/:settlementId` |                                                |
-
-`split` — `{ "type": "equal", "participants": [1, 2] }` або
-`{ "type": "exact", "shares": [{ "userId": 1, "amount": 5000 }] }`.
