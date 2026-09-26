@@ -141,3 +141,9 @@ html[data-design="mono"] #toast { background: #0b0b0f; color: #fff; }
 .design-preview-mono i:last-child { background: #0b0b0f; }
 html[data-design="mono"] .carousel-dot { background: #b9b9c2; }
 html[data-design="mono"] .carousel-dot.active { background: var(--text); }
+
+/* Звіт у світлому дизайні */
+html[data-design="mono"] .segmented button { background: #eceef4; }
+html[data-design="mono"] .segmented button.active { background: #0b0b0f; color: #fff; }
+html[data-design="mono"] .export-tile { background: #f2f2f7; }
+html[data-design="mono"] .export-arrow { background: #fff; }

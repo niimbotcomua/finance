@@ -1242,63 +1242,85 @@ function saveBlob(blob, filename) {
   setTimeout(() => URL.revokeObjectURL(url), 10000);
 }
 
+// Значки форматів (статичні SVG-рядки).
+const FILE_ICONS = {
+  xlsx: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M4 9h16M4 15h16M10 9v12"/></svg>',
+  pdf: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>',
+};
+
 function reportCard(group, members, expenses, settlements, categoryOf) {
-  const period = h('select', { 'aria-label': 'Період звіту' },
-    Object.entries(REPORT_PERIODS).map(([value, label]) => h('option', { value }, label)));
-  const status = h('p', { class: 'sub' });
+  // Період — перемикачі-пігулки замість списку.
+  let period = 'all';
+  const periodChips = h('div', { class: 'segmented', role: 'radiogroup', 'aria-label': 'Період звіту' });
+  const renderPeriods = () => periodChips.replaceChildren(...Object.entries(REPORT_PERIODS).map(([value, label]) =>
+    h('button', {
+      type: 'button', role: 'radio', 'aria-checked': String(value === period),
+      class: value === period ? 'active' : '',
+      onClick: () => { period = value; renderPeriods(); },
+    }, label)));
+  renderPeriods();
+
+  const status = h('p', { class: 'sub report-status', role: 'status' });
   const safeName = group.name.replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'група';
   const makeReport = () => {
     const now = new Date();
     return buildReport({
       group, members, settlements, categoryOf,
       expenses: expenses.map((e) => ({ ...e, photoCount: e.photoPaths.filter(Boolean).length })),
-      period: period.value,
+      period,
       todayIso: today(),
       generatedAt: new Date(now.getTime() - now.getTimezoneOffset() * 60000), // місцевий час у звіті
       currencyName: currencyInfo(group.currency).name,
     });
   };
-  const exportButton = (label, action) => {
-    const button = h('button', {
-      type: 'button',
+  const exportTile = (kind, title, note, action) => {
+    const icon = h('span', { class: `file-icon ${kind}`, 'aria-hidden': 'true' });
+    icon.innerHTML = FILE_ICONS[kind];
+    const tile = h('button', {
+      type: 'button', class: 'export-tile',
       onClick: async () => {
-        button.disabled = true;
-        status.textContent = 'Готую звіт…';
+        tile.disabled = true;
+        tile.classList.add('busy');
+        status.textContent = `Готую ${title}…`;
         try {
           await action();
-          status.textContent = 'Готово — файл завантажено.';
+          status.textContent = `✓ ${title} завантажено`;
         } catch (err) {
           status.textContent = err.message;
         } finally {
-          button.disabled = false;
+          tile.disabled = false;
+          tile.classList.remove('busy');
         }
       },
-    }, label);
-    return button;
+    },
+    icon,
+    h('span', { class: 'export-text' }, h('span', { class: 'export-title' }, title), h('span', { class: 'export-note' }, note)),
+    h('span', { class: 'export-arrow', 'aria-hidden': 'true' }, '↓'));
+    return tile;
   };
-  const excelButton = exportButton('⬇ Excel', async () => {
+  const excelTile = exportTile('xlsx', 'Excel', 'Таблиця · 4 аркуші', async () => {
     const ExcelJS = await loadExcelJS();
     const buffer = await writeWorkbook(ExcelJS, makeReport()).xlsx.writeBuffer();
     saveBlob(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
       `Звіт — ${safeName} — ${today()}.xlsx`);
   });
-  const pdfButton = exportButton('⬇ PDF A4', async () => {
+  const pdfTile = exportTile('pdf', 'PDF', 'Документ A4 для друку', async () => {
     const pdfMake = await loadPdfMake();
     const blob = await new Promise((resolve) => pdfMake.createPdf(buildPdfDoc(makeReport())).getBlob(resolve));
     saveBlob(blob, `Звіт — ${safeName} — ${today()}.pdf`);
   });
-  const button = h('div', { class: 'btn-row report-buttons' }, excelButton, pdfButton);
 
-  return h('div', { class: 'card' },
+  return h('div', { class: 'card report-card' },
     h('h2', {}, 'Звіт по групі'),
-    h('p', { class: 'sub' }, 'PDF — те саме на аркушах A4: зручно надіслати чи роздрукувати. Excel — чотири аркуші: «Підсумок» (суми, хто скільки заплатив, баланси й хто кому винен), '
-      + '«Витрати» (кожна витрата: дата, опис, тег, хто платив, сума, валюта й курс, частка кожного учасника), '
-      + '«Повернення боргів» і «По тегах».'),
-    h('label', {}, 'Період', period),
-    button,
+    h('p', { class: 'sub' }, 'Усі оплати, частки учасників, баланси й хто кому винен.'),
+    h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Період'), periodChips),
+    h('div', { class: 'export-tiles' }, excelTile, pdfTile),
     status,
-    h('p', { class: 'sub' }, 'Google Таблиці: відкрийте sheets.new → «Файл» → «Імпортувати» → «Завантажити» й виберіть цей файл '
-      + '(або просто завантажте його на Google Диск і відкрийте).'),
+    h('details', { class: 'report-help' },
+      h('summary', {}, 'Що всередині та як відкрити в Google Таблицях'),
+      h('p', { class: 'sub' }, 'Excel: «Підсумок», «Витрати» (дата, опис, тег, хто платив, сума, валюта й курс, частка кожного), '
+        + '«Повернення боргів», «По тегах». PDF — те саме на аркушах A4.'),
+      h('p', { class: 'sub' }, 'Google Таблиці: sheets.new → «Файл» → «Імпортувати» → «Завантажити» й виберіть файл Excel.')),
   );
 }
 
