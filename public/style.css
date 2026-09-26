@@ -108,6 +108,10 @@ button:disabled { opacity: 0.5; cursor: default; }
 .tabs { display: flex; gap: 4px; margin-bottom: 16px; padding: 4px; background: var(--card-2); border-radius: 999px; }
 .tabs button { flex: 1; padding: 10px; }
 .tabs button.secondary { background: transparent; color: var(--muted); }
+.google-btn { width: 100%; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 12px; }
+.google-icon { display: inline-flex; background: #fff; border-radius: 50%; padding: 3px; }
+.divider { display: flex; align-items: center; gap: 10px; margin: 16px 0; color: var(--muted); font-size: 13px; }
+.divider::before, .divider::after { content: ''; flex: 1; height: 1px; background: var(--border); }
 
 ul.list { list-style: none; margin: 0; padding: 0; }
 ul.list li {

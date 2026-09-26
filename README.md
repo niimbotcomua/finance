@@ -8,7 +8,7 @@
 
 ## Можливості
 
-- Реєстрація та вхід через Supabase Auth (email + пароль, підтвердження пошти).
+- Реєстрація та вхід через Supabase Auth: email + пароль (з підтвердженням пошти) або Google-акаунт.
 - Групи; запрошення за **посиланням** (людина реєструється й одразу потрапляє в групу)
   або додавання вже зареєстрованих учасників за email.
 - Витрати: хто платив, дата, **тег** (категорія), розподіл **порівну** або **точними сумами**
@@ -38,6 +38,19 @@
    [`public/config.js`](public/config.js). Ключ `service_role` / `secret` туди **не** вставляйте.
 
 За бажання підтвердження email можна вимкнути: **Authentication → Sign In / Providers → Email → Confirm email**.
+
+**Вхід через Google** (кнопка «Продовжити з Google»):
+
+1. [Google Cloud Console](https://console.cloud.google.com/) → **APIs & Services → OAuth consent screen**: заповніть назву застосунку
+   й email підтримки, тип — *External*, потім **Publish app** (інакше входити зможуть лише тестові користувачі).
+2. **APIs & Services → Credentials → Create credentials → OAuth client ID** → тип *Web application*.
+   У **Authorized redirect URIs** додайте `https://<project-id>.supabase.co/auth/v1/callback`
+   (точну адресу показує Supabase на кроці 3).
+3. Supabase: **Authentication → Sign In / Providers → Google** → увімкніть, вставте *Client ID* і *Client Secret* → **Save**.
+4. **Authentication → URL Configuration → Redirect URLs**: має бути адреса сайту (та сама, що й Site URL).
+
+Новий користувач Google отримує профіль з іменем з Google-акаунта; якщо раніше він реєструвався з тим самим email,
+Supabase прив'яже Google до наявного акаунта.
 
 ### 2. Vercel
 
