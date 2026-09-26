@@ -380,3 +380,33 @@ body.has-tabbar #toast { bottom: 104px; }
 .panel { position: relative; scroll-margin-top: 80px; }
 .panel-close { position: absolute; top: 18px; right: 16px; font-size: 16px; }
 .panel .card > h2, .panel .card-head { margin-right: 32px; }
+
+/* Список витрат: компактний рядок, що розгортається */
+ul.list.expenses li { display: block; padding: 0; }
+details.expense > summary {
+  display: flex; align-items: center; gap: 10px; padding: 12px 0;
+  list-style: none; cursor: pointer;
+}
+details.expense > summary::-webkit-details-marker { display: none; }
+details.expense > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 12px; }
+.expense-main { flex: 1; min-width: 0; }
+.expense-title { font-weight: 600; }
+.chevron {
+  color: var(--muted); font-size: 22px; line-height: 1; width: 14px; text-align: center;
+  transition: transform 0.15s ease;
+}
+details.expense[open] .chevron { transform: rotate(90deg); color: var(--accent); }
+.expense-body {
+  display: grid; gap: 12px; margin-bottom: 12px; padding: 14px;
+  border-radius: 16px; background: var(--card-2);
+}
+.pills { display: flex; flex-wrap: wrap; gap: 6px; }
+.pill {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 12px 6px 6px; border-radius: 999px; background: var(--card); font-size: 14px;
+}
+.pill-amount { color: var(--muted); font-variant-numeric: tabular-nums; }
+.expense-actions { display: flex; align-items: center; justify-content: flex-end; gap: 12px; flex-wrap: wrap; }
+.expense-actions button.link { font-size: 14px; }
+.menu-count.muted { background: rgb(255 255 255 / 0.08); color: var(--muted); }
+

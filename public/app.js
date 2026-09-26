@@ -775,6 +775,7 @@ async function renderGroup(groupId) {
       render: () => transfersCard(groupId, suggestedTransfers, nameOf, reload),
     },
     settle: { label: '💸 Повернення боргу', render: () => settlementFormCard(groupId, members, reload) },
+    members: { label: '👥 Учасники', count: members.length, muted: true, render: () => membersCard(group, members, reload) },
     analytics: { label: '📊 Аналітика', render: () => analyticsCard(expenses, members, categoryOf) },
     history: { label: '🕘 Історія змін', render: () => historyCard(history, nameOf, categoryOf) },
   };
@@ -794,7 +795,7 @@ async function renderGroup(groupId) {
       }, '✕'),
     )] : []));
   };
-  if (groupUi.groupId !== groupId) Object.assign(groupUi, { groupId, panel: null, period: 'all', inviteOpen: false });
+  if (groupUi.groupId !== groupId) Object.assign(groupUi, { groupId, panel: null, period: 'all', inviteOpen: false, openExpenses: new Set() });
   renderPanels();
 
   // Архів: коли всі розрахувалися, групу можна сховати (лише для себе).
@@ -825,19 +826,16 @@ async function renderGroup(groupId) {
     archiveBar,
     panels,
     h('div', { class: 'grid' },
-      h('div', {},
-        balancesCard(balances, profileOf),
-        membersCard(group, members, reload),
-      ),
+      balancesCard(balances, profileOf),
       h('div', {}, formSlot),
     ),
-    expensesCard(groupId, expenses, nameOf, profileOf, reload, showExpenseForm),
+    expensesCard(groupId, expenses, profileOf, reload, showExpenseForm),
     settlementsCard(groupId, settlements, nameOf, reload),
   );
 }
 
 // Стан сторінки групи, що переживає перемальовування (відкрита панель, період аналітики, блок запрошення).
-const groupUi = { groupId: null, panel: null, period: 'all', inviteOpen: false };
+const groupUi = { groupId: null, panel: null, period: 'all', inviteOpen: false, openExpenses: new Set() };
 
 /** Кнопка «☰» з випадаючим списком блоків групи. onPick(key) відкриває/закриває блок. */
 function groupMenu(defs, onPick) {
@@ -880,7 +878,7 @@ function groupMenu(defs, onPick) {
           },
         },
         h('span', {}, def.label),
-        def.count ? h('span', { class: 'menu-count' }, String(def.count)) : null,
+        def.count ? h('span', { class: def.muted ? 'menu-count muted' : 'menu-count' }, String(def.count)) : null,
         key === active ? h('span', { class: 'menu-check' }, '✓') : null)));
       button.classList.toggle('has-active', Boolean(active));
     },
@@ -1616,43 +1614,70 @@ function settlementFormCard(groupId, members, reload) {
   return h('div', { class: 'card' }, h('h2', {}, 'Повернення боргу'), form);
 }
 
-function expensesCard(groupId, expenses, nameOf, profileOf, reload, onEdit) {
+/** Пігулка «аватар + ім'я (+ сума)» — як у формі витрати. */
+function personPill(profile, amount = null) {
+  return h('span', { class: 'pill' }, avatar(profile, 'xs'), memberName(profile),
+    amount === null ? null : h('span', { class: 'pill-amount' }, formatMoney(amount)));
+}
+
+function expensesCard(groupId, expenses, profileOf, reload, onEdit) {
+  const expenseItem = (e) => {
+    // Рівний поділ: частки відрізняються щонайбільше на копійку (залишок від ділення).
+    const amounts = e.shares.map((s) => s.amount);
+    const isEqual = amounts.length > 0 && Math.max(...amounts) - Math.min(...amounts) <= 1;
+    const details = h('details', { class: 'expense', open: groupUi.openExpenses.has(e.id) },
+      h('summary', {},
+        h('div', { class: 'expense-main' },
+          h('div', { class: 'expense-title' }, e.description,
+            e.category ? h('span', { class: 'tag' }, categoryLabel(e.category)) : null),
+          h('div', { class: 'sub' }, formatDate(e.date)),
+        ),
+        h('span', { class: 'amount' }, formatMoney(e.amount)),
+        h('span', { class: 'chevron', 'aria-hidden': 'true' }, '›'),
+      ),
+      h('div', { class: 'expense-body' },
+        h('div', { class: 'field' },
+          h('span', { class: 'field-label' }, 'Хто платив'),
+          h('div', { class: 'pills' }, personPill(profileOf(e.paidBy))),
+        ),
+        h('div', { class: 'field' },
+          h('span', { class: 'field-label' }, isEqual ? 'Ділили порівну' : 'Ділили точними сумами'),
+          h('div', { class: 'pills' }, e.shares.map((s) => personPill(profileOf(s.userId), s.amount))),
+        ),
+        h('div', { class: 'expense-actions' },
+          e.edited ? h('span', { class: 'sub' }, 'змінено') : null,
+          e.receiptUrl && h('a', { class: 'receipt-link', href: e.receiptUrl, target: '_blank', rel: 'noopener', title: 'Фото квитанції' }, '🧾'),
+          h('button', { class: 'link edit', title: 'Редагувати витрату', onClick: () => onEdit(e) }, '✎ Редагувати'),
+          h('button', {
+            class: 'link',
+            title: 'Видалити витрату',
+            onClick: async () => {
+              if (!confirm(`Видалити витрату «${e.description}»?`)) return;
+              try {
+                await run(supabase.from('expenses').delete().eq('id', e.id));
+                if (e.receiptPath) await supabase.storage.from('receipts').remove([e.receiptPath]);
+              } catch (err) {
+                toast(err.message);
+              }
+              reload();
+            },
+          }, '✕ Видалити'),
+        ),
+      ),
+    );
+    // Розгорнуті витрати лишаються розгорнутими після оновлення сторінки групи.
+    details.addEventListener('toggle', () => {
+      if (details.open) groupUi.openExpenses.add(e.id);
+      else groupUi.openExpenses.delete(e.id);
+    });
+    return h('li', {}, details);
+  };
+
   return h('div', { class: 'card' },
     h('h2', {}, 'Витрати'),
     expenses.length === 0
       ? h('p', { class: 'empty' }, 'Витрат ще немає.')
-      : h('ul', { class: 'list' },
-        expenses.map((e) => {
-          const shareText = e.shares.map((s) => `${nameOf(s.userId)} ${formatMoney(s.amount)}`).join(', ');
-          return h('li', {},
-            h('div', {},
-              h('div', {}, e.description, e.category ? h('span', { class: 'tag' }, categoryLabel(e.category)) : null),
-              h('div', { class: 'sub' },
-                `${formatDate(e.date)} · платив(ла) `, avatar(profileOf(e.paidBy), 'xs'), ` ${nameOf(e.paidBy)} · ${shareText}`,
-                e.edited ? ' · змінено' : ''),
-            ),
-            h('div', { class: 'actions' },
-              h('span', { class: 'amount' }, formatMoney(e.amount)),
-              e.receiptUrl && h('a', { class: 'receipt-link', href: e.receiptUrl, target: '_blank', rel: 'noopener', title: 'Фото квитанції' }, '🧾'),
-              h('button', { class: 'link edit', title: 'Редагувати витрату', onClick: () => onEdit(e) }, '✎'),
-              h('button', {
-                class: 'link',
-                title: 'Видалити витрату',
-                onClick: async () => {
-                  if (!confirm(`Видалити витрату «${e.description}»?`)) return;
-                  try {
-                    await run(supabase.from('expenses').delete().eq('id', e.id));
-                    if (e.receiptPath) await supabase.storage.from('receipts').remove([e.receiptPath]);
-                  } catch (err) {
-                    toast(err.message);
-                  }
-                  reload();
-                },
-              }, '✕'),
-            ),
-          );
-        }),
-      ),
+      : h('ul', { class: 'list expenses' }, expenses.map(expenseItem)),
   );
 }
 
