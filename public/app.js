@@ -16,7 +16,8 @@ const tabbar = document.getElementById('tabbar');
 let currentUser = null;
 
 // ---------- Версія дизайну ----------
-// Обирає адміністратор (app_settings.design). Останній вибір пам'ятаємо в браузері, щоб сторінка не «блимала».
+// Загальний дизайн обирає адміністратор (app_settings.design), але кожен користувач може вибрати свій у профілі
+// (profiles.design). Останній застосований дизайн пам'ятаємо в браузері, щоб сторінка не «блимала».
 const DESIGNS = {
   dark: { label: 'Темний', note: 'Початковий: темний фон, рожево-помаранчеві акценти.' },
   mono: { label: 'Світлий', note: 'У стилі monobank: градієнт угорі, білі картки, чорні кнопки.' },
@@ -36,6 +37,16 @@ try {
   applyDesign(localStorage.getItem('design'));
 } catch {
   applyDesign('dark');
+}
+let siteDesign = null; // обраний адміністратором для всіх
+let userDesign = null; // власний вибір користувача (null — як у всіх)
+/** Застосовує дизайн: власний вибір користувача, інакше — загальний. */
+function refreshDesign() {
+  const design = userDesign ?? siteDesign;
+  if (design) applyDesign(design);
+  if (typeof renderBrand === 'function' && document.querySelector('.topbar .brand')) {
+    try { renderBrand(); } catch { /* шапка ще не готова */ }
+  }
 }
 
 // ---------- Утиліти ----------
@@ -176,11 +187,13 @@ async function loadCurrentUser() {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return null;
   const [profile, isAdmin, settings] = await Promise.all([
-    run(supabase.from('profiles').select('id, name, email, avatar_path').eq('id', session.user.id).maybeSingle()),
+    run(supabase.from('profiles').select('id, name, email, avatar_path, design').eq('id', session.user.id).maybeSingle()),
     run(supabase.rpc('am_i_admin')).catch(() => false),
     run(supabase.from('app_settings').select('design').maybeSingle()).catch(() => null),
   ]);
-  if (settings?.design) applyDesign(settings.design);
+  if (settings?.design) siteDesign = settings.design;
+  userDesign = profile?.design ?? null;
+  refreshDesign();
   return { ...(profile ?? { id: session.user.id, email: session.user.email, name: session.user.email }), isAdmin };
 }
 
@@ -228,7 +241,8 @@ async function loadSiteMeta() {
   } catch {
     siteMeta = null;
   }
-  if (siteMeta?.design) applyDesign(siteMeta.design);
+  if (siteMeta?.design) siteDesign = siteMeta.design;
+  refreshDesign();
   renderBrand();
 }
 
@@ -242,6 +256,8 @@ function renderUserbox() {
       onClick: async () => {
         await supabase.auth.signOut();
         currentUser = null;
+        userDesign = null;
+        refreshDesign();
         renderUserbox();
         location.hash = '#/login';
       },
@@ -456,7 +472,47 @@ function renderProfile() {
       ),
     ),
     h('div', { class: 'card' }, h('h2', {}, 'Дані'), nameForm),
+    designChoiceCard(),
   );
+}
+
+/** Профіль: власний дизайн або «як у всіх» (обраний адміністратором). */
+function designChoiceCard() {
+  const options = h('div', { class: 'design-options' });
+  const save = async (value, button) => {
+    button.disabled = true;
+    try {
+      await run(supabase.from('profiles').update({ design: value }).eq('id', currentUser.id));
+      userDesign = value;
+      currentUser.design = value;
+      refreshDesign();
+      toast(value ? `Дизайн «${DESIGNS[value].label}» — для вас` : 'Тепер дизайн як у всіх');
+    } catch (err) {
+      toast(err.message);
+    }
+    render();
+  };
+  const option = (value, label, note, previewKey) => h('button', {
+    type: 'button',
+    class: `design-option${userDesign === value ? ' active' : ''}`,
+    'aria-pressed': String(userDesign === value),
+    onClick: (e) => save(value, e.currentTarget),
+  },
+  h('span', { class: `design-preview design-preview-${previewKey}`, 'aria-hidden': 'true' }, h('i'), h('i'), h('i')),
+  h('span', { class: 'design-name' }, label),
+  h('span', { class: 'sub' }, note));
+  function render() {
+    const common = DESIGNS[siteDesign ?? 'dark'];
+    options.replaceChildren(
+      option(null, 'Як у всіх', `Зараз це «${common.label}» — його обирає адміністратор.`, siteDesign ?? 'dark'),
+      ...Object.entries(DESIGNS).map(([key, d]) => option(key, d.label, d.note, key)),
+    );
+  }
+  render();
+  return h('div', { class: 'card' },
+    h('h2', {}, 'Дизайн'),
+    h('p', { class: 'sub' }, 'Лише для вас: інші користувачі бачать свій вибір.'),
+    options);
 }
 
 // ---------- Адмінка ----------
@@ -647,15 +703,17 @@ async function renderAdmin() {
   const renderDesignOptions = () => designOptions.replaceChildren(...Object.entries(DESIGNS).map(([key, d]) =>
     h('button', {
       type: 'button',
-      class: `design-option${document.documentElement.dataset.design === key ? ' active' : ''}`,
-      'aria-pressed': String(document.documentElement.dataset.design === key),
+      class: `design-option${(siteDesign ?? 'dark') === key ? ' active' : ''}`,
+      'aria-pressed': String((siteDesign ?? 'dark') === key),
       onClick: async (e) => {
         e.currentTarget.disabled = true;
         try {
           await run(supabase.rpc('admin_set_design', { design: key }));
-          applyDesign(key);
-          renderBrand();
-          toast(`Дизайн «${d.label}» увімкнено для всіх`);
+          siteDesign = key;
+          refreshDesign();
+          toast(userDesign
+            ? `Дизайн «${d.label}» увімкнено для всіх (у вас самих — власний вибір із профілю)`
+            : `Дизайн «${d.label}» увімкнено для всіх`);
         } catch (err) {
           toast(err.message);
         }
@@ -673,7 +731,7 @@ async function renderAdmin() {
     brandingCard,
     h('div', { class: 'card' },
       h('h2', {}, 'Дизайн'),
-      h('p', { class: 'sub' }, 'Змінюється одразу для всіх користувачів.'),
+      h('p', { class: 'sub' }, 'Загальний дизайн для всіх. Кожен користувач може вибрати власний у «Профілі» — тоді в нього буде його вибір.'),
       designOptions,
     ),
     h('div', { class: 'card' },
@@ -2347,10 +2405,7 @@ function expensesCard(groupId, expenses, profileOf, reload, onEdit) {
       h('summary', {},
         h('div', { class: 'expense-main' },
           h('div', { class: 'expense-title' }, e.description),
-          h('div', { class: 'expense-meta' },
-            h('span', { class: 'sub' }, formatDate(e.date)),
-            e.category ? h('span', { class: 'tag', title: categoryLabel(e.category) }, categoryLabel(e.category)) : null,
-            e.photoUrls.some(Boolean) ? h('span', { class: 'tag tag-photo', title: 'Є фото' }, `📷 ${e.photoUrls.filter(Boolean).length}`) : null),
+          h('div', { class: 'sub' }, formatDate(e.date)),
         ),
         h('div', { class: 'expense-amount' },
           h('span', { class: 'amount' }, e.currency ? formatMoney(e.originalAmount, e.currency) : formatMoney(e.amount)),
@@ -2358,6 +2413,10 @@ function expensesCard(groupId, expenses, profileOf, reload, onEdit) {
         ),
         myShareCell(e),
         h('span', { class: 'chevron', 'aria-hidden': 'true' }, '›'),
+        // Теги — окремим рядком на всю ширину, щоб довгі назви вміщались повністю.
+        (e.category || e.photoUrls.some(Boolean)) ? h('div', { class: 'expense-meta' },
+          e.category ? h('span', { class: 'tag' }, categoryLabel(e.category)) : null,
+          e.photoUrls.some(Boolean) ? h('span', { class: 'tag tag-photo', title: 'Є фото' }, `📷 ${e.photoUrls.filter(Boolean).length}`) : null) : null,
       ),
       h('div', { class: 'expense-body' },
         e.photoUrls.some(Boolean) && photoCarousel(e.photoUrls.filter(Boolean).map((src) => ({ src }))),
@@ -2400,8 +2459,10 @@ function expensesCard(groupId, expenses, profileOf, reload, onEdit) {
     return h('li', {}, details);
   };
 
-  // Ширина колонок — за найдовшою сумою, щоб шапка, рядки й «Разом» стояли рівно.
-  const longest = (texts) => Math.max(...texts.map((t) => t.length));
+  // Ширина колонок — за найдовшою сумою (вимірюємо реальним шрифтом), щоб шапка, рядки й «Разом» стояли рівно.
+  const measure = h('canvas').getContext('2d');
+  measure.font = `700 15px ${getComputedStyle(document.body).fontFamily}`;
+  const longest = (texts) => Math.max(...texts.map((t) => measure.measureText(t).width));
   const amountTexts = [formatMoney(expenses.reduce((sum, e) => sum + e.amount, 0)),
     ...expenses.map((e) => (e.currency ? formatMoney(e.originalAmount, e.currency) : formatMoney(e.amount)))];
   const mineTexts = [formatMoney(expenses.reduce((sum, e) => sum + myShareOf(e), 0)), 'Ваша частка'];
@@ -2421,9 +2482,8 @@ function expensesCard(groupId, expenses, profileOf, reload, onEdit) {
       ],
   );
   if (expenses.length > 0) {
-    // ≈9,5px на символ жирного шрифту 15px — з запасом, щоб суми не налазили одна на одну.
-    card.style.setProperty('--amount-w', `${Math.ceil(longest(amountTexts) * 9.5)}px`);
-    card.style.setProperty('--mine-w', `${Math.ceil(longest(mineTexts) * 9.5)}px`);
+    card.style.setProperty('--amount-w', `${Math.ceil(longest(amountTexts)) + 2}px`);
+    card.style.setProperty('--mine-w', `${Math.ceil(longest(mineTexts)) + 2}px`);
   }
   return card;
 }
@@ -2523,6 +2583,8 @@ async function start() {
   supabase.auth.onAuthStateChange((event) => {
     if (event === 'SIGNED_OUT') {
       currentUser = null;
+      userDesign = null;
+      refreshDesign();
       renderUserbox();
       renderTabbar('');
     }

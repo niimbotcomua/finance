@@ -490,3 +490,13 @@ test('окремий логотип для кожного дизайну', async
   assert.equal((await setLogo('anna', 'nova', null))[0].old, 'shared.png');
   assert.deepEqual(await logos(), { dark: 'dark-2.png' });
 });
+
+test('власний дизайн користувача: змінює лише свій', async () => {
+  await as('vira', "update public.profiles set design = 'nova' where id = $1", [users.vira]);
+  assert.equal((await as('vira', 'select design from public.profiles where id = $1', [users.vira]))[0].design, 'nova');
+  await rejects(as('vira', "update public.profiles set design = 'pink' where id = $1", [users.vira]), 'profiles_design_check');
+  // Чужий профіль не змінюється (RLS просто не знаходить рядок).
+  await as('vira', "update public.profiles set design = 'mono' where id = $1", [users.anna]);
+  assert.notEqual((await db.query('select design from public.profiles where id = $1', [users.anna])).rows[0].design, 'mono');
+  await as('vira', 'update public.profiles set design = null where id = $1', [users.vira]);
+});
