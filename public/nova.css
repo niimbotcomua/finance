@@ -35,11 +35,15 @@ html[data-design="nova"] .topbar {
   backdrop-filter: none; -webkit-backdrop-filter: none;
 }
 html[data-design="nova"] .brand { color: var(--accent); text-transform: uppercase; font-weight: 900; font-size: 16px; letter-spacing: 0.01em; white-space: nowrap; }
+html[data-design="nova"] .topbar { padding: 8px 16px; min-height: 60px; }
 html[data-design="nova"] .topbar .me { color: var(--text); }
+html[data-design="nova"] .topbar .avatar { width: 36px; height: 36px; font-size: 14px; box-shadow: inset 0 0 0 1px var(--border) !important; }
+html[data-design="nova"] .topbar button.secondary { padding: 8px 14px; font-size: 12px; min-height: 36px; }
+html[data-design="nova"] .brand-logo { height: 44px; width: 110px; object-position: left center; }
 
 /* Плитки: сірі, без тіней, невеликі заокруглення */
 html[data-design="nova"] .card { box-shadow: none; }
-html[data-design="nova"] .card.editing { box-shadow: inset 0 0 0 2px var(--accent); }
+html[data-design="nova"] .card.editing { box-shadow: inset 0 0 0 1px var(--accent); }
 
 /* Поля — білі з рамкою, майже квадратні */
 html[data-design="nova"] input,
@@ -113,16 +117,25 @@ html[data-design="nova"] a.group-name { font-size: 19px; font-weight: 800; }
 /* Рядки списків усередині плиток — білі «картки-рядки», як таблиці НП */
 html[data-design="nova"] ul.list li.is-me { background: #fff; box-shadow: inset 3px 0 0 var(--accent); border-radius: 4px; }
 html[data-design="nova"] .avatar { background: #fff; color: var(--accent); box-shadow: inset 0 0 0 1px var(--border); }
-html[data-design="nova"] .avatar-me { box-shadow: 0 0 0 2px var(--accent) !important; }
+html[data-design="nova"] .avatar-me { box-shadow: 0 0 0 2px #fff, 0 0 0 3px var(--text) !important; }
 html[data-design="nova"] .avatar-stack .avatar { box-shadow: 0 0 0 2px var(--card) !important; }
 html[data-design="nova"] .badge { border-radius: 4px; background: color-mix(in srgb, var(--accent) 10%, #fff); color: var(--accent); }
 html[data-design="nova"] .badge.muted,
 html[data-design="nova"] .tag { border-radius: 4px; background: #fff; color: var(--muted); box-shadow: inset 0 0 0 1px var(--border); }
 
 /* Пігулки учасників → прямокутні «чипи» з рамкою */
-html[data-design="nova"] .checks label { border-radius: 6px; background: #fff; box-shadow: inset 0 0 0 1px var(--border); }
-html[data-design="nova"] .checks label:has(input:checked) { background: color-mix(in srgb, var(--accent) 7%, #fff); box-shadow: inset 0 0 0 1px var(--accent); }
-html[data-design="nova"] .checks.pick label:has(input:checked) { box-shadow: inset 0 0 0 2px var(--accent); }
+/* Чипи учасників: однакова висота; вибраний — червона рамка 2px на білому, решта — звичайний текст */
+html[data-design="nova"] .checks { gap: 8px; }
+html[data-design="nova"] .checks label {
+  min-height: 48px; padding: 6px 14px 6px 8px; gap: 10px; border-radius: 6px;
+  background: #fff; color: var(--text); font-size: 15px; box-shadow: inset 0 0 0 1px var(--border);
+}
+html[data-design="nova"] .checks label:has(input[type=checkbox]) { padding-left: 12px; }
+html[data-design="nova"] .checks label .avatar-xs { width: 30px; height: 30px; font-size: 13px; margin-left: 0; }
+html[data-design="nova"] .checks label:has(input:checked) { background: #fff; box-shadow: inset 0 0 0 2px var(--accent); }
+html[data-design="nova"] .checks.pick label:not(:has(input:checked)) { color: var(--text); }
+html[data-design="nova"] .checks label strong { font-weight: 600; }
+html[data-design="nova"] .checks input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--accent); }
 html[data-design="nova"] .pill { border-radius: 6px; background: #fff; box-shadow: inset 0 0 0 1px var(--border); }
 html[data-design="nova"] .expense-body,
 html[data-design="nova"] .receipt,
@@ -150,8 +163,13 @@ html[data-design="nova"] .tabbar {
   background: #fff; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none;
   justify-content: center;
 }
-html[data-design="nova"] .tab { max-width: 140px; border-radius: 0; color: #8d8d95; }
-html[data-design="nova"] .tab.active { color: var(--accent); background: none; box-shadow: inset 0 3px 0 var(--accent); }
+html[data-design="nova"] .tab { max-width: 140px; padding: 8px 4px 6px; border-radius: 0; color: #8d8d95; font-weight: 600; }
+html[data-design="nova"] .tab.active { color: var(--accent); background: none; }
+html[data-design="nova"] .tab .tab-icon { position: relative; }
+html[data-design="nova"] .tab.active .tab-icon::after {
+  content: ''; position: absolute; left: 50%; top: -8px; width: 20px; height: 3px; margin-left: -10px;
+  border-radius: 0 0 3px 3px; background: var(--accent);
+}
 html[data-design="nova"] body.has-tabbar main { padding-bottom: 96px; }
 html[data-design="nova"] body.has-tabbar #toast { bottom: 84px; }
 
