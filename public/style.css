@@ -694,3 +694,7 @@ ul.list.group-tiles li.group-tile:active { transform: scale(0.99); }
 
 /* Підсумок під списком: довгий підпис переноситься, а не налазить на суми */
 .expense-total > span:first-child { white-space: normal; font-size: 14px; line-height: 1.3; }
+
+/* Небезпечний пункт меню (видалення) — окремо внизу, червоним */
+.menu-item.danger { color: var(--negative); margin-top: 4px; box-shadow: 0 -1px 0 var(--border); border-radius: 0 0 12px 12px; }
+html[data-design="nova"] .menu-item.danger { color: var(--negative); }
