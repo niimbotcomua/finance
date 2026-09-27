@@ -581,12 +581,12 @@ function telegramCard() {
         }
         hint.hidden = false;
       }),
-    }, telegramIcon(20), status.linked ? 'Підключити інший Telegram' : 'Підключити Telegram');
+    }, telegramIcon(20), status.linked ? 'Змінити Telegram' : 'Підключити Telegram');
     connect.classList.add('tg-connect');
     const hint = h('p', { class: 'sub', hidden: true },
       'У Telegram натисніть «Старт» (Start), потім ',
       h('a', { href: '#/profile', onClick: (e) => { e.preventDefault(); render(); } }, 'оновіть цю картку'), '.');
-    const buttons = h('div', { class: 'actions' }, connect);
+    const buttons = h('div', { class: 'actions tg-actions' }, connect);
     if (status.linked) {
       const off = h('button', {
         type: 'button',
@@ -605,13 +605,13 @@ function telegramCard() {
       h('img', { class: 'tg-bot-avatar', src: '/img/bot-avatar.png', alt: '', width: 56, height: 56 }),
       h('span', { class: 'tg-bot-info' },
         h('strong', { class: 'tg-bot-name' }, 'Спільні витрати'),
-        h('span', { class: 'tg-bot-username' }, `@${status.bot_username}`)),
-      h('span', { class: `tg-status${status.linked ? ' on' : ''}` }, status.linked ? 'Підключено' : 'Не підключено'));
+        h('span', { class: 'tg-bot-username' }, `@${status.bot_username}`),
+        h('span', { class: `tg-status${status.linked ? ' on' : ''}` }, status.linked ? 'Підключено' : 'Не підключено')));
     card.replaceChildren(
       h('div', { class: 'tg-head' }, telegramIcon(), h('h2', {}, 'Сповіщення в Telegram')),
       bot,
       h('p', { class: 'sub' }, status.linked
-        ? 'Бот надсилає вам нові витрати з ваших груп (крім доданих вами): що купили, скільки, ваша частка й баланс.'
+        ? 'Бот надсилає вам нові витрати з ваших груп (крім доданих вами): що купили, скільки, ваша витрата й баланс.'
         : 'Підключіть бота — і він надсилатиме вам повідомлення, щойно хтось додасть витрату у вашій групі.'),
       buttons,
       hint,

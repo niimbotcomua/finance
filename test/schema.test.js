@@ -582,7 +582,7 @@ test('Telegram: прив\'язка через бота і сповіщення �
   const today = (await db.query("select to_char(current_date, 'DD.MM.YYYY') as d")).rows[0].d;
   assert.equal(sent[0].body.text,
     '💸 <b>Нова витрата</b> · Відпустка\n\n🧾 <b>Готель</b>\n💰 <b>1 234,56 грн</b>\n👤 Заплатив(ла): <b>Ганна</b>\n'
-    + `📅 ${today}\n\n<blockquote>🫵 Ваша частка: <b>617,28 грн</b></blockquote>\n`
+    + `📅 ${today}\n\n<blockquote>🫵 Ваша витрата: <b>617,28 грн</b></blockquote>\n`
     + '🔴 Ваш баланс у групі: <b>−617,28 грн</b> — ви винні');
   assert.equal(sent[0].body.parse_mode, 'HTML');
   const [{ id: eid }] = (await db.query('select id from public.expenses where group_id = $1', [gid])).rows;
