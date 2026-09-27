@@ -8,6 +8,7 @@ export function buildExpenseEmails(data, siteUrl) {
   const amount = data.original ? `${data.amount} (${data.original})` : data.amount;
   return (data.recipients ?? []).map((r) => {
     const html = emailLayout({
+      siteUrl: site,
       title: 'Нова витрата 💸',
       body: paragraph('У групі ', { strong: `«${data.group_name}»` }, ' додали витрату.')
         + details([
@@ -20,7 +21,7 @@ export function buildExpenseEmails(data, siteUrl) {
         ]),
       button: { label: 'Відкрити групу', url: `${site}/#/groups/${data.group_id}` },
       note: `Ви отримали цей лист, бо ввімкнули сповіщення про нові витрати. Вимкнути можна в `
-        + `<a href="${escapeHtml(site)}/#/profile" style="color:#ff4f6d;">профілі</a>.`,
+        + `<a href="${escapeHtml(site)}/#/profile" style="color:#da291c;">профілі</a>.`,
     });
     return {
       to: r.email,
