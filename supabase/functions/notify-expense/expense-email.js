@@ -16,7 +16,7 @@ export function buildExpenseEmails(data, siteUrl) {
           ['Дата', formatDate(data.date)],
           ['Заплатив(ла)', data.payer],
           ['Додав(ла)', data.author],
-          ['Ваша частка', r.share ?? 'вас немає серед тих, хто ділить цю витрату'],
+          ['Ваша витрата', r.share ?? 'вас немає серед тих, хто ділить цю витрату'],
         ]),
       button: { label: 'Відкрити групу', url: `${site}/#/groups/${data.group_id}` },
       note: `Ви отримали цей лист, бо ввімкнули сповіщення про нові витрати. Вимкнути можна в `

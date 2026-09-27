@@ -62,7 +62,7 @@ test('Листи: сповіщення про витрату — кожному 
   assert.equal(mails[0].subject, 'Дрова — 300,00 грн · «Дача <1>»');
   assert.match(mails[0].html, /«Дача &lt;1&gt;»/);
   assert.match(mails[0].html, /href="https:\/\/finance\.example\.com\/#\/groups\/7"/);
-  assert.match(mails[0].text, /Ваша частка\s*150,00 грн/);
+  assert.match(mails[0].text, /Ваша витрата\s*150,00 грн/);
   assert.match(mails[0].text, /Дата\s*27\.09\.2026/);
   assert.doesNotMatch(mails[0].text, /Додав\(ла\)/);
   assert.match(mails[1].text, /вас немає серед тих/);
