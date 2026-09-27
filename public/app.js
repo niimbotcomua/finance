@@ -2573,7 +2573,7 @@ function expenseFormCard(groupId, members, categories, rates, reload, editing = 
     && Math.max(...baseAmounts) - Math.min(...baseAmounts) <= 1);
 
   // Перемикач «Порівну / Точними сумами» — дві кнопки замість випадного списку.
-  const splitType = h('div', { class: 'checks pick split-toggle', role: 'radiogroup', 'aria-label': 'Як ділити' },
+  const splitType = h('div', { class: 'split-switch', role: 'radiogroup', 'aria-label': 'Як ділити' },
     [['equal', 'Порівну'], ['exact', 'Точними сумами']].map(([value, label]) =>
       h('label', {}, h('input', { type: 'radio', name: 'splitType', value, checked: (value === 'equal') === isEqual }), label)),
   );

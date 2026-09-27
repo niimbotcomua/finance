@@ -310,9 +310,27 @@ ul.list li.is-me {
 .checks.pick label:not(:has(input:checked)) { color: var(--muted); }
 .shares label .person { gap: 8px; }
 .shares .spent { color: var(--muted); font-size: 14px; white-space: nowrap; margin-left: 2px; }
-.split-toggle { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-/* Подвійний клас — щоб перебити відступи кнопок з файлів дизайнів */
-.checks.pick.split-toggle label { justify-content: center; text-align: center; font-size: 15px; font-weight: 600; padding-left: 6px; padding-right: 6px; }
+/* Перемикач «Порівну / Точними сумами»: доріжка, по якій їздить кольорова плашка */
+.split-switch {
+  position: relative; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding: 4px; border-radius: 999px; background: color-mix(in srgb, var(--text) 9%, var(--card));
+}
+.split-switch::before {
+  content: ''; position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc(50% - 4px);
+  border-radius: 999px; background: var(--accent-grad);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.18);
+  transition: transform 0.25s ease;
+}
+.split-switch:has(label:last-child input:checked)::before { transform: translateX(100%); }
+.split-switch label {
+  position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; text-align: center;
+  min-height: 44px; padding: 6px 8px; border-radius: 999px; cursor: pointer;
+  font-size: 15px; font-weight: 600; color: var(--muted); transition: color 0.2s;
+}
+.split-switch label:has(input:checked) { color: var(--accent-text); }
+.split-switch input { position: absolute; opacity: 0; pointer-events: none; }
+.split-switch label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .split-switch::before, .split-switch label { transition: none; } }
 
 /* Нижня панель розділів (як у mono) */
 body.has-tabbar main { padding-bottom: 120px; }
