@@ -1464,7 +1464,7 @@ async function renderGroups(showArchive = false) {
 
 async function renderGroup(groupId) {
   const [group, memberRows, expenseRows, settlementRows, categories, history, rateRows, viewRows] = await Promise.all([
-    run(supabase.from('groups').select('id, name, currency, invite_token, created_by').eq('id', groupId).maybeSingle()),
+    run(supabase.from('groups').select('id, name, currency, expense_currency, invite_token, created_by').eq('id', groupId).maybeSingle()),
     run(supabase.from('group_members').select('user_id, archived_at, profiles (id, name, email, avatar_path)').eq('group_id', groupId).order('id')),
     run(supabase.from('expenses')
       .select('id, description, amount, paid_by, date, category_id, receipt_path, receipt_path2, currency, original_amount, rate, expense_shares (user_id, amount)')
@@ -1534,7 +1534,7 @@ async function renderGroup(groupId) {
   // Форма витрати: «нова» або редагування вибраної витрати.
   const formSlot = h('div', {});
   const showExpenseForm = (editing = null) => {
-    formSlot.replaceChildren(expenseFormCard(groupId, members, categories, rates, reload, editing, () => showExpenseForm()));
+    formSlot.replaceChildren(expenseFormCard(groupId, members, categories, rates, reload, editing, () => showExpenseForm(), group.expense_currency));
     if (editing) {
       formSlot.scrollIntoView({ behavior: 'smooth', block: 'start' });
       formSlot.querySelector('input[name=description]').focus({ preventScroll: true });
@@ -2149,6 +2149,26 @@ function ratesCard(group, rateRows, reload) {
     );
   });
 
+  // Валюта, яка підставляється в нову витрату (основна або будь-яка з курсом).
+  const defaultSelect = h('select', { 'aria-label': 'Валюта для нових витрат' },
+    [base, ...rateRows.map((r) => r.currency)].map((code) => h('option', {
+      value: code, selected: code === (group.expense_currency ?? base),
+    }, code === base ? `${currencyLabel(code)} — основна` : currencyLabel(code))));
+  defaultSelect.addEventListener('change', async () => {
+    defaultSelect.disabled = true;
+    try {
+      await run(supabase.rpc('set_group_expense_currency', { gid: group.id, currency: defaultSelect.value }));
+      toast(`Нові витрати — у ${defaultSelect.value}`);
+      reload();
+    } catch (err) {
+      toast(err.message);
+      defaultSelect.disabled = false;
+    }
+  });
+  const defaultBox = rateRows.length > 0 && h('label', { class: 'default-currency' },
+    'Валюта для нових витрат', defaultSelect,
+    h('span', { class: 'sub' }, 'Підставляється, коли додаєте витрату; у самій витраті її можна змінити.'));
+
   const used = new Set([base, ...rateRows.map((r) => r.currency)]);
   const available = currencyList.filter((c) => !used.has(c.code));
   const error = h('div', { class: 'error' });
@@ -2221,6 +2241,7 @@ function ratesCard(group, rateRows, reload) {
       + 'Витрату в іншій валюті перераховуємо за курсом на момент додавання; зміна курсу не переписує старі витрати.'),
     rows.length > 0 ? h('ul', { class: 'list rates' }, rows) : h('p', { class: 'empty' }, 'Інших валют ще немає.'),
     refreshAll,
+    defaultBox,
     available.length > 0 && h('h3', {}, 'Додати валюту'),
     available.length > 0 && form,
   );
@@ -2590,7 +2611,7 @@ async function saveReceipt(groupId, expenseId, slots) {
 }
 
 /** Форма нової витрати; якщо передано editing — редагування цієї витрати. */
-function expenseFormCard(groupId, members, categories, rates, reload, editing = null, onCancel = null) {
+function expenseFormCard(groupId, members, categories, rates, reload, editing = null, onCancel = null, defaultCurrency = null) {
   const error = h('div', { class: 'error' });
 
   // Валюта витрати: основна або будь-яка з курсом у налаштуваннях групи.
@@ -2599,8 +2620,11 @@ function expenseFormCard(groupId, members, categories, rates, reload, editing = 
   if (editing?.currency && !currencies.includes(editing.currency)) currencies.push(editing.currency);
   const rateFor = (code) => (code === baseCurrency ? 1
     : code === editing?.currency ? editing.rate : rates.get(code));
+  // Нова витрата — у валюті за замовчуванням групи (якщо її курс ще є), редагування — у валюті самої витрати.
+  const initialCurrency = editing ? (editing.currency ?? baseCurrency)
+    : (defaultCurrency && currencies.includes(defaultCurrency) ? defaultCurrency : baseCurrency);
   const currencySelect = h('select', { name: 'currency', 'aria-label': 'Валюта', hidden: currencies.length === 1 },
-    currencies.map((code) => h('option', { value: code, selected: code === (editing?.currency ?? baseCurrency) }, currencyLabel(code))));
+    currencies.map((code) => h('option', { value: code, selected: code === initialCurrency }, currencyLabel(code))));
   const cur = () => currencySelect.value;
 
   // Під час редагування: якщо частки — це рівний поділ між тими, хто бере участь, показуємо «Порівну».
