@@ -579,10 +579,13 @@ test('Telegram: прив\'язка через бота і сповіщення �
   assert.equal(sent.length, 1);
   assert.equal(sent[0].url, 'https://api.telegram.org/bot123:ABC/sendMessage');
   assert.equal(sent[0].body.chat_id, 555);
+  const today = (await db.query("select to_char(current_date, 'DD.MM.YYYY') as d")).rows[0].d;
   assert.equal(sent[0].body.text,
-    '💸 Нова витрата в групі «Відпустка»\nГотель — 1 234,56 грн\nЗаплатив(ла): Ганна\nВаша витрата: 617,28 грн'
-    + '\n\n<b>Ваш баланс у групі: −617,28 грн — ви винні</b>');
+    '💸 <b>Нова витрата</b> · Відпустка\n\n🧾 <b>Готель</b>\n💰 <b>1 234,56 грн</b>\n👤 Заплатив(ла): <b>Ганна</b>\n'
+    + `📅 ${today}\n\n<blockquote>🫵 Ваша частка: <b>617,28 грн</b></blockquote>\n`
+    + '🔴 Ваш баланс у групі: <b>−617,28 грн</b> — ви винні');
   assert.equal(sent[0].body.parse_mode, 'HTML');
+  assert.deepEqual(sent[0].body.reply_markup, { inline_keyboard: [[{ text: '📂 Відкрити групу', url: `https://finance.chinnect24.com/#/groups/${gid}` }]] });
 
   // /stop і кнопка «Відключити» вимикають сповіщення.
   assert.match((await webhook(secret, '/stop')).text, /вимкнено/);
@@ -638,7 +641,7 @@ test('Пошта: сповіщення про нову витрату лише �
 test('Telegram: баланс у повідомленні й екранування HTML', async () => {
   const one = async (sql) => (await db.query(sql)).rows[0].v;
   assert.equal(await one("select private.telegram_html('A&B <i>') as v"), 'A&amp;B &lt;i&gt;');
-  assert.equal(await one("select private.telegram_balance_line(150000, 'UAH') as v"), '<b>Ваш баланс у групі: +1 500,00 грн — вам винні</b>');
-  assert.equal(await one("select private.telegram_balance_line(-5, 'USD') as v"), '<b>Ваш баланс у групі: −0,05 USD — ви винні</b>');
-  assert.equal(await one("select private.telegram_balance_line(0, 'UAH') as v"), '<b>Ваш баланс у групі: 0,00 грн — усе сплачено</b>');
+  assert.equal(await one("select private.telegram_balance_line(150000, 'UAH') as v"), '🟢 Ваш баланс у групі: <b>+1 500,00 грн</b> — вам винні');
+  assert.equal(await one("select private.telegram_balance_line(-5, 'USD') as v"), '🔴 Ваш баланс у групі: <b>−0,05 USD</b> — ви винні');
+  assert.equal(await one("select private.telegram_balance_line(0, 'UAH') as v"), '⚪️ Ваш баланс у групі: <b>0,00 грн</b> — усе сплачено');
 });
