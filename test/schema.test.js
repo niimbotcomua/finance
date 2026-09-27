@@ -530,3 +530,64 @@ test('видалення групи: лише автор і лише без ви
   assert.equal((await db.query('select count(*)::int as n from public.groups where id = $1', [gid])).rows[0].n, 0);
   assert.equal((await db.query('select count(*)::int as n from public.group_members where group_id = $1', [gid])).rows[0].n, 0);
 });
+
+test('Telegram: прив\'язка через бота і сповіщення про нову витрату', async () => {
+  // Замість pg_net — запис запитів у таблицю.
+  await db.exec(`
+    create schema if not exists net;
+    create table if not exists net.sent (url text, body jsonb);
+    create or replace function net.http_post(url text, body jsonb, headers jsonb) returns bigint language sql as
+      $$ insert into net.sent values (url, body); select 1::bigint $$;
+    grant usage on schema net to authenticated;
+    grant insert on net.sent to authenticated;
+  `);
+  const webhook = async (secret, text, chatId = 555) => (await db.query(
+    'select public.telegram_webhook($1, $2::jsonb) as r',
+    [secret, JSON.stringify({ message: { chat: { id: chatId, type: 'private' }, text } })],
+  )).rows[0].r;
+
+  // Поки бота не налаштовано — у профілі нічого не показуємо, посилання не видаємо.
+  assert.deepEqual(await as('bohdan', 'select * from public.telegram_status()'), []);
+  await rejects(as('bohdan', 'select public.telegram_link_start()'), 'ще не налаштовано');
+
+  await db.query("select private.telegram_setup('123:ABC', '@spilni_bot', 'https://example.com/hook')");
+  const [{ webhook_secret: secret }] = (await db.query('select webhook_secret from private.telegram_bot')).rows;
+  const hook = (await db.query("select body from net.sent where url like '%/setWebhook'")).rows[0].body;
+  assert.equal(hook.secret_token, secret);
+  assert.equal(hook.url, 'https://example.com/hook');
+
+  // Токен і прив'язки не видно через API, вебхук не викликати звичайному користувачу.
+  await rejects(as('bohdan', 'select * from private.telegram_bot'), 'permission denied');
+  await rejects(as('bohdan', "select public.telegram_webhook('x', '{}'::jsonb)"), 'permission denied');
+  await rejects(webhook('wrong', '/start abc'), 'forbidden');
+
+  const [{ telegram_link_start: link }] = await as('bohdan', 'select public.telegram_link_start()');
+  assert.match(link, /^https:\/\/t\.me\/spilni_bot\?start=[0-9a-f]{32}$/);
+  const code = link.split('=')[1];
+  assert.match((await webhook(secret, `/start ${code}`)).text, /Готово, Богдан/);
+  assert.match((await webhook(secret, `/start ${code}`)).text, /застаріло/); // код одноразовий
+  assert.deepEqual(await as('bohdan', 'select * from public.telegram_status()'), [{ bot_username: 'spilni_bot', linked: true }]);
+
+  // Анна додає витрату — Богдан отримує повідомлення, сама Анна й чужі — ні.
+  await db.exec('delete from net.sent');
+  const [{ create_group: gid }] = await as('anna', 'select public.create_group($1)', ['Відпустка']);
+  await as('anna', 'select public.add_group_member($1, $2)', [gid, 'bohdan@example.com']);
+  await as('anna',
+    'select public.add_expense(gid => $1, description => $2, amount => 123456, paid_by => $3, shares => $4::jsonb)',
+    [gid, 'Готель', users.anna, JSON.stringify([{ user_id: users.anna, amount: 61728 }, { user_id: users.bohdan, amount: 61728 }])]);
+  const sent = (await db.query('select url, body from net.sent')).rows;
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].url, 'https://api.telegram.org/bot123:ABC/sendMessage');
+  assert.equal(sent[0].body.chat_id, 555);
+  assert.equal(sent[0].body.text,
+    '💸 Нова витрата в групі «Відпустка»\nГотель — 1 234,56 грн\nЗаплатив(ла): Ганна\nВаша частка: 617,28 грн');
+
+  // /stop і кнопка «Відключити» вимикають сповіщення.
+  assert.match((await webhook(secret, '/stop')).text, /вимкнено/);
+  assert.deepEqual(await as('bohdan', 'select * from public.telegram_status()'), [{ bot_username: 'spilni_bot', linked: false }]);
+  await db.exec('delete from net.sent');
+  await as('anna',
+    'select public.add_expense(gid => $1, description => $2, amount => 100, paid_by => $3, shares => $4::jsonb)',
+    [gid, 'Кава', users.anna, JSON.stringify([{ user_id: users.anna, amount: 100 }])]);
+  assert.equal((await db.query('select count(*)::int as n from net.sent')).rows[0].n, 0);
+});

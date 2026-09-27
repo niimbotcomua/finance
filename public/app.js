@@ -482,8 +482,73 @@ function renderProfile() {
       ),
     ),
     h('div', { class: 'card' }, h('h2', {}, 'Дані'), nameForm),
+    telegramCard(),
     designChoiceCard(),
   );
+}
+
+/** Профіль: сповіщення в Telegram про нові витрати (картка з'являється, коли адміністратор налаштував бота). */
+function telegramCard() {
+  const card = h('div', { class: 'card', hidden: true });
+  async function render() {
+    const [status] = await run(supabase.rpc('telegram_status'));
+    if (!status) return;
+    const error = h('div', { class: 'error' });
+    const action = async (button, fn) => {
+      error.textContent = '';
+      button.disabled = true;
+      try {
+        await fn();
+      } catch (err) {
+        error.textContent = err.message;
+      }
+      button.disabled = false;
+    };
+    const connect = h('button', {
+      type: 'button',
+      onClick: () => action(connect, async () => {
+        // Вкладку відкриваємо одразу (до запиту), інакше браузер може її заблокувати.
+        const tab = window.open('', '_blank');
+        try {
+          const link = await run(supabase.rpc('telegram_link_start'));
+          if (tab) tab.location.href = link;
+          else location.href = link;
+        } catch (err) {
+          tab?.close();
+          throw err;
+        }
+        hint.hidden = false;
+      }),
+    }, status.linked ? 'Підключити інший Telegram' : 'Підключити Telegram');
+    const hint = h('p', { class: 'sub', hidden: true },
+      'У Telegram натисніть «Старт» (Start), потім ',
+      h('a', { href: '#/profile', onClick: (e) => { e.preventDefault(); render(); } }, 'оновіть цю картку'), '.');
+    const buttons = h('div', { class: 'actions' }, connect);
+    if (status.linked) {
+      const off = h('button', {
+        type: 'button',
+        class: 'secondary',
+        onClick: () => action(off, async () => {
+          await run(supabase.rpc('telegram_unlink'));
+          toast('Сповіщення в Telegram вимкнено');
+          render();
+        }),
+      }, 'Вимкнути');
+      buttons.append(off);
+    }
+    card.replaceChildren(
+      h('h2', {}, 'Сповіщення в Telegram'),
+      h('p', { class: 'sub' }, status.linked
+        ? `✅ Підключено. Бот @${status.bot_username} надсилає вам нові витрати з ваших груп (крім доданих вами).`
+        : `Бот @${status.bot_username} надсилатиме вам повідомлення, щойно хтось додасть витрату у вашій групі.`),
+      buttons,
+      hint,
+      error,
+    );
+    card.hidden = false;
+  }
+  render().catch(() => {}); // бота не налаштовано або міграцію ще не застосовано — картку не показуємо
+  return card;
 }
 
 /** Профіль: власний дизайн або «як у всіх» (обраний адміністратором). */
