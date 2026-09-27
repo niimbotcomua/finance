@@ -105,6 +105,7 @@ button.link:hover { color: var(--negative); filter: none; }
 button:disabled { opacity: 0.5; cursor: default; }
 
 .auth { max-width: 400px; margin: 40px auto; }
+.auth .forgot { justify-self: end; margin-top: -4px; font-size: 14px; color: var(--muted); }
 .tabs { display: flex; gap: 4px; margin-bottom: 16px; padding: 4px; background: var(--card-2); border-radius: 999px; }
 .tabs button { flex: 1; padding: 10px; }
 .tabs button.secondary { background: transparent; color: var(--muted); }
