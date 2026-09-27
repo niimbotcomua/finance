@@ -50,3 +50,28 @@ test('Листи: невідомі дії пропускаються, значе
   assert.equal(render('<b>{{ .Email }}</b> {{ .Other }}', { Email: '<x>' }), '<b>&lt;x&gt;</b> {{ .Other }}');
   assert.equal(htmlToText('<p>Привіт&nbsp;<a href="https://a.b/?x=1&amp;y=2">тут</a></p>'), 'Привіт тут: https://a.b/?x=1&y=2\n');
 });
+
+test('Листи: сповіщення про витрату — кожному отримувачу своя частка, дані екрануються', async () => {
+  const { buildExpenseEmails } = await import('../supabase/functions/notify-expense/expense-email.js');
+  const mails = buildExpenseEmails({
+    group_id: 7, group_name: 'Дача <1>', description: 'Дрова', amount: '300,00 грн', original: null,
+    date: '2026-09-27', payer: 'Богдан', author: null,
+    recipients: [{ email: 'b@example.com', name: 'Богдан', share: '150,00 грн' }, { email: 'v@example.com', name: 'Віра', share: null }],
+  }, SITE);
+  assert.deepEqual(mails.map((m) => m.to), ['b@example.com', 'v@example.com']);
+  assert.equal(mails[0].subject, 'Дрова — 300,00 грн · «Дача <1>»');
+  assert.match(mails[0].html, /«Дача &lt;1&gt;»/);
+  assert.match(mails[0].html, /href="https:\/\/finance\.example\.com\/#\/groups\/7"/);
+  assert.match(mails[0].text, /Ваша частка\s*150,00 грн/);
+  assert.match(mails[0].text, /Дата\s*27\.09\.2026/);
+  assert.doesNotMatch(mails[0].text, /Додав\(ла\)/);
+  assert.match(mails[1].text, /вас немає серед тих/);
+});
+
+test('Листи: звіт по групі — тема, відправник і посилання на групу', async () => {
+  const { buildReportEmail } = await import('../supabase/functions/send-report/report-email.js');
+  const mail = buildReportEmail({ groupName: 'Відпустка', groupId: 3, periodLabel: 'Цей місяць', senderName: 'Анна', siteUrl: SITE });
+  assert.equal(mail.subject, 'Звіт по групі «Відпустка»');
+  assert.match(mail.text, /Анна надсилає звіт по групі «Відпустка» \(період: Цей місяць\)\./);
+  assert.match(mail.html, /#\/groups\/3/);
+});

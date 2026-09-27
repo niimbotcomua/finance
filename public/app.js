@@ -197,7 +197,7 @@ async function loadCurrentUser() {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return null;
   const [profile, isAdmin, settings] = await Promise.all([
-    run(supabase.from('profiles').select('id, name, email, avatar_path, design').eq('id', session.user.id).maybeSingle()),
+    run(supabase.from('profiles').select('id, name, email, avatar_path, design, notify_expense_email').eq('id', session.user.id).maybeSingle()),
     run(supabase.rpc('am_i_admin')).catch(() => false),
     run(supabase.from('app_settings').select('design').maybeSingle()).catch(() => null),
   ]);
@@ -482,8 +482,39 @@ function renderProfile() {
       ),
     ),
     h('div', { class: 'card' }, h('h2', {}, 'Дані'), nameForm),
+    emailNotifyCard(),
     telegramCard(),
     designChoiceCard(),
+  );
+}
+
+/** Профіль: листи на пошту про нові витрати в групах. */
+function emailNotifyCard() {
+  const status = h('p', { class: 'sub', role: 'status' });
+  const input = h('input', {
+    type: 'checkbox',
+    checked: Boolean(currentUser.notify_expense_email),
+    onChange: async () => {
+      const enabled = input.checked;
+      input.disabled = true;
+      status.textContent = '';
+      try {
+        await run(supabase.from('profiles').update({ notify_expense_email: enabled }).eq('id', currentUser.id));
+        currentUser.notify_expense_email = enabled;
+        toast(enabled ? 'Сповіщення на пошту ввімкнено' : 'Сповіщення на пошту вимкнено');
+      } catch (err) {
+        input.checked = !enabled;
+        status.textContent = err.message;
+      }
+      input.disabled = false;
+    },
+  });
+  return h('div', { class: 'card' },
+    h('h2', {}, 'Сповіщення на пошту'),
+    h('label', { class: 'filter-switch' }, input, 'Надсилати лист, коли в моїй групі додають нову витрату'),
+    h('p', { class: 'sub' }, `Лист прийде на ${currentUser.email}: що купили, скільки, хто платив і ваша частка. `
+      + 'Про витрати, які додаєте ви самі, листів не буде.'),
+    status,
   );
 }
 
@@ -1597,6 +1628,14 @@ function loadPdfMake() {
   return pdfLoading;
 }
 
+/** ArrayBuffer → base64 (частинами, щоб не переповнити стек на великих файлах). */
+function toBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
+}
+
 function saveBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const link = h('a', { href: url, download: filename });
@@ -1609,6 +1648,7 @@ function saveBlob(blob, filename) {
 // Значки форматів (статичні SVG-рядки).
 const FILE_ICONS = {
   xlsx: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2.5"/><path d="M4 9h16M4 15h16M10 9v12"/></svg>',
+  mail: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="m4 7 8 6 8-6"/></svg>',
   pdf: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h4"/></svg>',
 };
 
@@ -1674,11 +1714,72 @@ function reportCard(group, members, expenses, settlements, categoryOf) {
     saveBlob(blob, `Звіт — ${safeName} — ${today()}.pdf`);
   });
 
+  // Надіслати Excel на пошту: собі або всім учасникам групи.
+  let recipients = 'me';
+  const recipientChips = h('div', { class: 'segmented', role: 'radiogroup', 'aria-label': 'Кому надіслати' });
+  const renderRecipients = () => recipientChips.replaceChildren(...[
+    ['me', `Мені (${currentUser.email})`],
+    ['members', `Усім учасникам (${members.length})`],
+  ].map(([value, label]) => h('button', {
+    type: 'button', role: 'radio', 'aria-checked': String(value === recipients),
+    class: value === recipients ? 'active' : '',
+    onClick: () => { recipients = value; renderRecipients(); },
+  }, label)));
+  renderRecipients();
+  const sendButton = h('button', {
+    type: 'button',
+    onClick: async () => {
+      sendButton.disabled = true;
+      status.textContent = 'Готую й надсилаю звіт…';
+      try {
+        const ExcelJS = await loadExcelJS();
+        const buffer = await writeWorkbook(ExcelJS, makeReport()).xlsx.writeBuffer();
+        const { data: result, error } = await supabase.functions.invoke('send-report', {
+          body: {
+            group_id: group.id,
+            to: recipients,
+            filename: `Звіт — ${safeName} — ${today()}.xlsx`,
+            content: toBase64(buffer),
+            period_label: REPORT_PERIODS[period],
+          },
+        });
+        if (error) {
+          // Текст помилки від функції (українською) — у тілі відповіді.
+          const message = await error.context?.json?.().then((r) => r.error).catch(() => null);
+          throw new Error(message || 'Не вдалося надіслати звіт. Спробуйте пізніше.');
+        }
+        status.textContent = recipients === 'me'
+          ? `✓ Звіт надіслано на ${currentUser.email}`
+          : `✓ Звіт надіслано учасникам: ${result.sent}${result.failed ? ` (не вдалося: ${result.failed})` : ''}`;
+        mailPanel.hidden = true;
+      } catch (err) {
+        status.textContent = err.message;
+      } finally {
+        sendButton.disabled = false;
+      }
+    },
+  }, 'Надіслати');
+  const mailPanel = h('div', { class: 'mail-panel', hidden: true },
+    h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Кому надіслати Excel'), recipientChips),
+    h('div', { class: 'actions' }, sendButton,
+      h('button', { type: 'button', class: 'secondary', onClick: () => { mailPanel.hidden = true; } }, 'Скасувати')),
+  );
+  const mailIcon = h('span', { class: 'file-icon mail', 'aria-hidden': 'true' });
+  mailIcon.innerHTML = FILE_ICONS.mail;
+  const mailTile = h('button', {
+    type: 'button', class: 'export-tile',
+    onClick: () => { mailPanel.hidden = !mailPanel.hidden; status.textContent = ''; },
+  },
+  mailIcon,
+  h('span', { class: 'export-text' }, h('span', { class: 'export-title' }, 'На пошту'), h('span', { class: 'export-note' }, 'Excel — собі чи всій групі')),
+  h('span', { class: 'export-arrow', 'aria-hidden': 'true' }, '→'));
+
   return h('div', { class: 'card report-card' },
     h('h2', {}, 'Звіт по групі'),
     h('p', { class: 'sub' }, 'Усі оплати, частки учасників, баланси й хто кому винен.'),
     h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Період'), periodChips),
-    h('div', { class: 'export-tiles' }, excelTile, pdfTile),
+    h('div', { class: 'export-tiles' }, excelTile, pdfTile, mailTile),
+    mailPanel,
     status,
     h('details', { class: 'report-help' },
       h('summary', {}, 'Що всередині та як відкрити в Google Таблицях'),

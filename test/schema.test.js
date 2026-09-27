@@ -591,3 +591,44 @@ test('Telegram: прив\'язка через бота і сповіщення �
     [gid, 'Кава', users.anna, JSON.stringify([{ user_id: users.anna, amount: 100 }])]);
   assert.equal((await db.query('select count(*)::int as n from net.sent')).rows[0].n, 0);
 });
+
+test('Пошта: сповіщення про нову витрату лише тим, хто ввімкнув', async () => {
+  // net.http_post уже підмінено в тесті Telegram (запис у net.sent).
+  await db.exec('delete from net.sent');
+  const [{ create_group: gid }] = await as('anna', 'select public.create_group($1)', ['Дача']);
+  await as('anna', 'select public.add_group_member($1, $2)', [gid, 'bohdan@example.com']);
+  await as('anna', 'select public.add_group_member($1, $2)', [gid, 'vira@example.com']);
+  const addExpense = () => as('anna',
+    'select public.add_expense(gid => $1, description => $2, amount => 30000, paid_by => $3, shares => $4::jsonb)',
+    [gid, 'Дрова', users.bohdan, JSON.stringify([{ user_id: users.anna, amount: 15000 }, { user_id: users.bohdan, amount: 15000 }])]);
+  const mailSent = async () => (await db.query("select body from net.sent where url like '%notify-expense'")).rows;
+
+  // Поки функцію не налаштовано — нічого не надсилаємо.
+  await as('bohdan', 'update public.profiles set notify_expense_email = true where id = $1', [users.bohdan]);
+  await addExpense();
+  assert.deepEqual(await mailSent(), []);
+
+  // Налаштування й секрет не видно через API; чужий профіль не змінити.
+  await db.query("select private.email_notify_setup('https://example.com/functions/v1/notify-expense', 's3cret')");
+  await rejects(as('bohdan', 'select * from private.email_notify'), 'permission denied');
+  await rejects(as('bohdan', "select private.email_notify_setup('https://evil.example', 'x')"), 'permission denied');
+  await as('bohdan', 'update public.profiles set notify_expense_email = true where id = $1', [users.vira]);
+  assert.equal((await db.query('select notify_expense_email from public.profiles where id = $1', [users.vira])).rows[0].notify_expense_email, false);
+
+  // Анна додає витрату — лист лише Богдану (Віра не вмикала, Анна — авторка).
+  await addExpense();
+  const [first, ...rest] = await mailSent();
+  assert.equal(rest.length, 0);
+  assert.deepEqual(first.body.recipients, [{ email: 'Bohdan@Example.com', name: 'Богдан', share: '150,00 грн' }]);
+  assert.equal(first.body.group_name, 'Дача');
+  assert.equal(first.body.group_id, gid);
+  assert.equal(first.body.amount, '300,00 грн');
+  assert.equal(first.body.payer, 'Богдан');
+  assert.equal(first.body.author, 'Ганна');
+
+  // Вимкнув — більше листів немає.
+  await db.exec('delete from net.sent');
+  await as('bohdan', 'update public.profiles set notify_expense_email = false where id = $1', [users.bohdan]);
+  await addExpense();
+  assert.deepEqual(await mailSent(), []);
+});
