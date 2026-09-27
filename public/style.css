@@ -310,6 +310,9 @@ ul.list li.is-me {
 .checks.pick label:not(:has(input:checked)) { color: var(--muted); }
 .shares label .person { gap: 8px; }
 .shares .spent { color: var(--muted); font-size: 14px; white-space: nowrap; margin-left: 2px; }
+.split-toggle { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+/* Подвійний клас — щоб перебити відступи кнопок з файлів дизайнів */
+.checks.pick.split-toggle label { justify-content: center; text-align: center; font-size: 15px; font-weight: 600; padding-left: 6px; padding-right: 6px; }
 
 /* Нижня панель розділів (як у mono) */
 body.has-tabbar main { padding-bottom: 120px; }
