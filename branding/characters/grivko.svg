@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="Гривко рахує на калькуляторі 50/50">
+  <defs>
+    <linearGradient id="iris" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2a1f4f"/>
+      <stop offset="1" stop-color="#7b5cd6"/>
+    </linearGradient>
+    <linearGradient id="hoodie" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffd166"/>
+      <stop offset="1" stop-color="#ffb938"/>
+    </linearGradient>
+    <g id="wing">
+      <rect x="-128" y="-15" width="140" height="30" rx="15" fill="#ffffff" transform="rotate(38)"/>
+      <rect x="-108" y="-15" width="120" height="30" rx="15" fill="#ffe1dc" transform="rotate(16)"/>
+      <rect x="-86" y="-15" width="98" height="30" rx="15" fill="#ffc2b8" transform="rotate(-6)"/>
+    </g>
+    <!-- Купюра (як у логотипі), центр у 0,0: 224×132 -->
+    <g id="note">
+      <rect x="-112" y="-66" width="224" height="132" rx="18" fill="#ffffff" stroke="#b81d12" stroke-width="8"/>
+      <rect x="-94" y="-48" width="188" height="96" rx="8" fill="none" stroke="#da291c" stroke-width="6" stroke-dasharray="2 11" stroke-linecap="round" opacity=".5"/>
+      <circle r="40" fill="#da291c"/>
+      <path d="M-15 -17 C-8 -30 20 -28 18 -11 C16 2 -18 2 -19 17 C-20 32 8 33 19 21" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round"/>
+      <path d="M-26 -3 H26 M-26 10 H26" stroke="#fff" stroke-width="7" stroke-linecap="round"/>
+    </g>
+    <g id="flying">
+      <use href="#wing" transform="translate(-100 -20)"/>
+      <use href="#wing" transform="translate(100 -20) scale(-1 1)"/>
+      <use href="#note"/>
+    </g>
+  
+    <linearGradient id="tee" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3ed3b0"/><stop offset="1" stop-color="#1fae8e"/></linearGradient>
+    <linearGradient id="iris2" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a2410"/><stop offset="1" stop-color="#c4812f"/></linearGradient></defs>
+
+  <use href="#flying" transform="translate(64 96) rotate(-14) scale(.18)"/>
+  <use href="#flying" transform="translate(344 170) rotate(12) scale(.14)"/>
+  <use href="#flying" transform="translate(48 310) rotate(8) scale(.12)"/>
+  <g transform="translate(306 58)">
+    <path transform="" d="M-50 -24 H50 A16 16 0 0 1 66 -8 V10 A16 16 0 0 1 50 26 H-18 L-34 42 L-32 26 H-50 A16 16 0 0 1 -66 10 V-8 A16 16 0 0 1 -50 -24 Z" fill="#fff"/>
+    <text x="0" y="9" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="22" font-weight="800" fill="#da291c">50 / 50</text></g>
+  <ellipse cx="200" cy="378" rx="92" ry="12" fill="#000" opacity=".16"/>
+  <rect x="174" y="334" width="20" height="36" rx="9" fill="#2d3a5c"/>
+  <rect x="206" y="334" width="20" height="36" rx="9" fill="#2d3a5c"/>
+  <ellipse cx="182" cy="370" rx="17" ry="9" fill="#fff"/><ellipse cx="218" cy="370" rx="17" ry="9" fill="#fff"/>
+  <!-- руки -->
+  <path d="M166 262 Q128 270 110 298" fill="none" stroke="url(#tee)" stroke-width="22" stroke-linecap="round"/>
+  <path d="M234 262 Q276 262 300 234" fill="none" stroke="url(#tee)" stroke-width="22" stroke-linecap="round"/>
+  <path d="M160 246 Q200 234 240 246 Q256 252 258 272 L262 336 Q262 346 250 346 H150 Q138 346 138 336 L142 272 Q144 252 160 246 Z" fill="url(#tee)"/>
+  <path d="M184 248 Q200 262 216 248" fill="none" stroke="#17967a" stroke-width="5" stroke-linecap="round"/>
+  <!-- віяло купюр у правій руці -->
+  <use href="#note" transform="translate(312 196) rotate(8) scale(.26)"/>
+  <use href="#note" transform="translate(322 206) rotate(28) scale(.26)"/>
+  <circle cx="302" cy="232" r="12" fill="#ffe3d3"/>
+  <!-- калькулятор у лівій руці -->
+  <g transform="translate(96 272) rotate(-8)">
+    <rect x="-30" y="-40" width="60" height="80" rx="10" fill="#2b2446"/>
+    <rect x="-22" y="-32" width="44" height="20" rx="4" fill="#c8f7c5"/>
+    <text x="0" y="-17" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="13" font-weight="800" fill="#1d5c2a">50/50</text>
+    <g fill="#6c63a8"><rect x="-22" y="-4" width="12" height="10" rx="3"/><rect x="-6" y="-4" width="12" height="10" rx="3"/><rect x="10" y="-4" width="12" height="10" rx="3"/>
+    <rect x="-22" y="10" width="12" height="10" rx="3"/><rect x="-6" y="10" width="12" height="10" rx="3"/><rect x="10" y="10" width="12" height="24" rx="3" fill="#da291c"/>
+    <rect x="-22" y="24" width="12" height="10" rx="3"/><rect x="-6" y="24" width="12" height="10" rx="3"/></g>
+  </g>
+  <circle cx="112" cy="300" r="12" fill="#ffe3d3"/>
+  <!-- голова -->
+  <rect x="188" y="226" width="24" height="22" rx="8" fill="#f7cdb8"/>
+  <path d="M122 176 Q118 92 200 88 Q282 92 278 176 Z" fill="#e8762c"/>
+  <ellipse cx="200" cy="178" rx="72" ry="64" fill="#ffe3d3"/>
+  <ellipse cx="170" cy="186" rx="16" ry="21" fill="#fff"/>
+    <ellipse cx="171" cy="189" rx="13" ry="18" fill="url(#iris2)"/>
+    <ellipse cx="171" cy="192" rx="6" ry="9" fill="#1b1433"/>
+    <circle cx="165" cy="181" r="5.5" fill="#fff"/>
+    <circle cx="176" cy="198" r="2.5" fill="#fff"/>
+    <path d="M153 180 Q166 160 188 172" fill="none" stroke="#2b2446" stroke-width="5" stroke-linecap="round" transform=""/>
+<ellipse cx="230" cy="186" rx="16" ry="21" fill="#fff"/>
+    <ellipse cx="229" cy="189" rx="13" ry="18" fill="url(#iris2)"/>
+    <ellipse cx="229" cy="192" rx="6" ry="9" fill="#1b1433"/>
+    <circle cx="223" cy="181" r="5.5" fill="#fff"/>
+    <circle cx="234" cy="198" r="2.5" fill="#fff"/>
+    <path d="M213 180 Q226 160 248 172" fill="none" stroke="#2b2446" stroke-width="5" stroke-linecap="round" transform="translate(460 0) scale(-1 1)"/>
+
+  <path d="M156 156 L180 150 M220 150 L244 156" stroke="#b5561b" stroke-width="5" stroke-linecap="round"/>
+  <ellipse cx="148" cy="212" rx="12" ry="6.5" fill="#ff8a95" opacity=".5"/><ellipse cx="252" cy="212" rx="12" ry="6.5" fill="#ff8a95" opacity=".5"/>
+  <path d="M186 212 Q200 230 216 210" fill="none" stroke="#8a2b2b" stroke-width="5" stroke-linecap="round"/>
+  <!-- колюча чуприна -->
+  <path d="M120 170 L112 132 L136 140 L128 104 L158 118 L160 84 L186 106 L200 70 L214 106 L240 84 L242 118 L272 104 L264 140 L288 132 L280 170 Q268 136 238 132 L224 150 L210 128 L196 150 L182 128 L166 148 L160 132 Q132 136 120 170 Z" fill="#f08a3a"/>
+  <path d="M150 116 Q176 100 204 104" fill="none" stroke="#ffb070" stroke-width="6" stroke-linecap="round"/>
+  <!-- олівець за вухом -->
+  <g transform="translate(270 150) rotate(-35)"><rect x="-4" y="-26" width="8" height="44" rx="2" fill="#ffd166"/><path d="M-4 18 L0 28 L4 18 Z" fill="#2b2446"/></g>
+</svg>
