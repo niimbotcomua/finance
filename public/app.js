@@ -159,6 +159,8 @@ const ERROR_TRANSLATIONS = {
   'Password should be at least': 'Пароль занадто короткий (мінімум 8 символів)',
   'should be different from the old password': 'Новий пароль має відрізнятися від старого',
   'only request this after': 'Лист уже надіслано — зачекайте хвилину перед повторною спробою',
+  'has expired or is invalid': 'Посилання з листа недійсне або застаріло — запросіть новий лист',
+  'is invalid or has expired': 'Посилання з листа недійсне або застаріло — запросіть новий лист',
   'rate limit': 'Забагато спроб, спробуйте трохи пізніше',
   'row-level security': 'Недостатньо прав для цієї дії',
 };
@@ -2862,6 +2864,30 @@ async function route() {
   }
 }
 
+// Кнопки в листах ведуть на наш сайт: /?token_hash=…&type=… (а не на *.supabase.co — так листи рідше потрапляють у спам).
+// Тут підтверджуємо цей токен і прибираємо його з адреси.
+const EMAIL_LINK_DONE = {
+  email: 'Пошту підтверджено',
+  email_change: 'Нову пошту підтверджено',
+  invite: 'Запрошення прийнято',
+};
+
+async function confirmEmailLink() {
+  const query = new URLSearchParams(location.search);
+  const tokenHash = query.get('token_hash');
+  const type = query.get('type');
+  if (!tokenHash || !type) return;
+  let next = type === 'recovery' ? '#/reset-password' : '#/';
+  try {
+    await run(supabase.auth.verifyOtp({ token_hash: tokenHash, type }));
+    if (EMAIL_LINK_DONE[type]) toast(EMAIL_LINK_DONE[type]);
+  } catch (err) {
+    next = '#/login';
+    toast(err.message);
+  }
+  history.replaceState(null, '', `${location.pathname}${next}`);
+}
+
 async function start() {
   if (!supabase) {
     mount(
@@ -2873,7 +2899,8 @@ async function start() {
     return;
   }
   loadSiteMeta(); // логотип і дизайн — паралельно з рештою
-  // Після переходу за посиланням з листа Supabase повертає токен у #…; getSession() його обробляє.
+  await confirmEmailLink();
+  // Старі листи (до переходу на ?token_hash=…) повертають токен у #…; getSession() його обробляє.
   await supabase.auth.getSession();
   if (/access_token|error_description/.test(location.hash)) {
     const params = new URLSearchParams(location.hash.slice(1));
