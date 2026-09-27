@@ -29,49 +29,20 @@
     </g>
   </defs>
 
-  <style>
-    /* Анімація Ділюші: підстрибує, по черзі «роздає» купюри, кліпає; купюри з крильцями літають. */
-    .spin { transform-box: fill-box; transform-origin: center; }
-    #char { animation: bounce 2.4s ease-in-out infinite; }
-    #shadow { transform-box: fill-box; transform-origin: center; animation: shadow 2.4s ease-in-out infinite; }
-    #armL { transform-origin: 166px 262px; animation: giveL 2.4s ease-in-out infinite; }
-    #armR { transform-origin: 234px 262px; animation: giveR 2.4s ease-in-out infinite; }
-    .eye { transform-box: fill-box; transform-origin: center; animation: blink 4.2s infinite; }
-    #ahoge { transform-origin: 204px 94px; animation: sway 2.4s ease-in-out infinite; }
-    #clip { animation: coin 3.6s ease-in-out infinite; }
-    #bubble { transform-origin: 266px 100px; animation: pop 2.4s ease-in-out infinite; }
-    .fly { animation: fly 3.2s ease-in-out infinite; }
-    .fly.b { animation-duration: 3.8s; animation-delay: -1.2s; }
-    .fly.c { animation-duration: 2.9s; animation-delay: -2s; }
-    @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
-    @keyframes shadow { 0%, 100% { transform: scaleX(1); opacity: .16; } 50% { transform: scaleX(.88); opacity: .1; } }
-    @keyframes giveL { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-12deg); } 50% { transform: rotate(0); } }
-    @keyframes giveR { 0%, 50%, 100% { transform: rotate(0); } 75% { transform: rotate(12deg); } }
-    @keyframes blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.08); } }
-    @keyframes sway { 0%, 100% { transform: rotate(-6deg); } 50% { transform: rotate(8deg); } }
-    @keyframes coin { 0%, 100% { transform: scaleX(1); } 50% { transform: scaleX(-1); } }
-    @keyframes pop { 0%, 100% { transform: scale(1); } 10% { transform: scale(1.1); } 20% { transform: scale(.97); } 30% { transform: scale(1); } }
-    @keyframes fly { 0%, 100% { transform: translate(0, 0) rotate(0); } 50% { transform: translate(6px, -14px) rotate(6deg); } }
-    @media (prefers-reduced-motion: reduce) { * { animation: none !important; } }
-  </style>
-
   <!-- Купюри, що летять -->
-  <g class="fly spin"><use href="#flying" transform="translate(70 92) rotate(-14) scale(.2)"/></g>
-  <g class="fly spin b"><use href="#flying" transform="translate(338 150) rotate(12) scale(.16)"/></g>
-  <g class="fly spin c"><use href="#flying" transform="translate(52 300) rotate(8) scale(.13)"/></g>
+  <use href="#flying" transform="translate(70 92) rotate(-14) scale(.2)"/>
+  <use href="#flying" transform="translate(338 150) rotate(12) scale(.16)"/>
+  <use href="#flying" transform="translate(52 300) rotate(8) scale(.13)"/>
 
   <!-- Бульбашка -->
-  <g id="bubble">
   <g transform="translate(300 58)">
     <path d="M-58 -24 H58 A16 16 0 0 1 74 -8 V10 A16 16 0 0 1 58 26 H-18 L-34 42 L-32 26 H-58 A16 16 0 0 1 -74 10 V-8 A16 16 0 0 1 -58 -24 Z" fill="#ffffff"/>
     <text x="0" y="9" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="22" font-weight="800" fill="#da291c">Порівну!</text>
   </g>
-  </g>
 
   <!-- Тінь -->
-  <ellipse id="shadow" cx="200" cy="378" rx="92" ry="12" fill="#000" opacity=".16"/>
+  <ellipse cx="200" cy="378" rx="92" ry="12" fill="#000" opacity=".16"/>
 
-  <g id="char">
   <!-- Ноги -->
   <rect x="174" y="334" width="20" height="36" rx="9" fill="#2b2446"/>
   <rect x="206" y="334" width="20" height="36" rx="9" fill="#2b2446"/>
@@ -81,18 +52,9 @@
   <!-- Волосся ззаду -->
   <path d="M112 170 Q110 82 200 76 Q290 82 288 170 L292 236 Q280 246 262 238 L262 196 H138 L138 238 Q120 246 108 236 Z" fill="#3b2f63"/>
 
-  <!-- Ліва рука з купюрою -->
-  <g id="armL">
+  <!-- Руки -->
   <path d="M166 262 Q116 266 80 226" fill="none" stroke="url(#hoodie)" stroke-width="22" stroke-linecap="round"/>
-  <use href="#note" transform="translate(62 204) rotate(-24) scale(.3)"/>
-  <circle cx="78" cy="224" r="12" fill="#ffe3d3"/>
-  </g>
-  <!-- Права рука з купюрою -->
-  <g id="armR">
   <path d="M234 262 Q284 266 320 226" fill="none" stroke="url(#hoodie)" stroke-width="22" stroke-linecap="round"/>
-  <use href="#note" transform="translate(338 204) rotate(24) scale(.3)"/>
-  <circle cx="322" cy="224" r="12" fill="#ffe3d3"/>
-  </g>
 
   <!-- Худі -->
   <path d="M160 246 Q200 234 240 246 Q256 252 258 272 L262 336 Q262 346 250 346 H150 Q138 346 138 336 L142 272 Q144 252 160 246 Z" fill="url(#hoodie)"/>
@@ -101,12 +63,20 @@
   <circle cx="181" cy="287" r="4" fill="#fff4d6"/>
   <circle cx="219" cy="287" r="4" fill="#fff4d6"/>
 
+  <!-- Купюри в руках -->
+  <use href="#note" transform="translate(62 204) rotate(-24) scale(.3)"/>
+  <use href="#note" transform="translate(338 204) rotate(24) scale(.3)"/>
+  <!-- Кисті поверх купюр -->
+  <circle cx="78" cy="224" r="12" fill="#ffe3d3"/>
+  <circle cx="322" cy="224" r="12" fill="#ffe3d3"/>
+
+
   <!-- Шия й обличчя -->
   <rect x="188" y="226" width="24" height="22" rx="8" fill="#f7cdb8"/>
   <ellipse cx="200" cy="176" rx="72" ry="66" fill="#ffe3d3"/>
 
   <!-- Очі -->
-  <g class="eye">
+  <g>
     <ellipse cx="170" cy="184" rx="16" ry="21" fill="#ffffff"/>
     <ellipse cx="171" cy="187" rx="13" ry="18" fill="url(#iris)"/>
     <ellipse cx="171" cy="190" rx="6" ry="9" fill="#1b1433"/>
@@ -114,7 +84,7 @@
     <circle cx="176" cy="196" r="2.5" fill="#ffffff"/>
     <path d="M153 178 Q166 158 188 170" fill="none" stroke="#2b2446" stroke-width="5" stroke-linecap="round"/>
   </g>
-  <g class="eye">
+  <g>
     <ellipse cx="230" cy="184" rx="16" ry="21" fill="#ffffff"/>
     <ellipse cx="229" cy="187" rx="13" ry="18" fill="url(#iris)"/>
     <ellipse cx="229" cy="190" rx="6" ry="9" fill="#1b1433"/>
@@ -135,11 +105,8 @@
   <path d="M126 170 Q124 96 200 92 Q276 96 274 170 L262 150 L252 166 L240 132 L226 158 L212 128 L200 156 L186 126 L172 158 L160 132 L148 166 L138 150 Z" fill="#3b2f63"/>
   <path d="M152 112 Q176 98 204 100" fill="none" stroke="#5b4a91" stroke-width="6" stroke-linecap="round"/>
   <!-- Стирчик -->
-  <path id="ahoge" d="M200 94 Q192 60 218 58 Q206 70 214 92" fill="#3b2f63"/>
+  <path d="M200 94 Q192 60 218 58 Q206 70 214 92" fill="#3b2f63"/>
   <!-- Заколка-монетка -->
-  <g id="clip" class="spin">
   <circle cx="258" cy="120" r="13" fill="#ffd166" stroke="#e6a817" stroke-width="3"/>
   <path d="M253 116 Q256 111 261 113 Q264 117 258 120 Q252 123 255 127 Q259 129 263 125 M251 119 H265 M251 122.5 H265" fill="none" stroke="#b7791f" stroke-width="2" stroke-linecap="round"/>
-  </g>
-  </g>
 </svg>
