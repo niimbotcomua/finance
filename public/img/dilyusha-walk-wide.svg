@@ -64,10 +64,10 @@
   </style>
 
   <!-- Лічильник витрат -->
-  <text x="580" y="166" text-anchor="end" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="15" font-weight="800" fill="#fff" opacity=".85" letter-spacing="1">ВИТРАЧЕНО</text>
-  <text class="slot s1" x="580" y="194" text-anchor="end" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="24" font-weight="900" fill="#fff">350 ₴</text>
-  <text class="slot s2" x="580" y="194" text-anchor="end" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="24" font-weight="900" fill="#fff">440 ₴</text>
-  <text class="slot s3" x="580" y="194" text-anchor="end" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="24" font-weight="900" fill="#fff">1 040 ₴</text>
+  <text x="580" y="160" text-anchor="end" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="18" font-weight="800" fill="#fff" opacity=".85" letter-spacing="1">ВИТРАЧЕНО</text>
+  <text class="slot s1" x="580" y="194" text-anchor="end" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="29" font-weight="900" fill="#fff">350 ₴</text>
+  <text class="slot s2" x="580" y="194" text-anchor="end" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="29" font-weight="900" fill="#fff">440 ₴</text>
+  <text class="slot s3" x="580" y="194" text-anchor="end" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="29" font-weight="900" fill="#fff">1 040 ₴</text>
 
   <g class="walker">
     <!-- Тінь -->

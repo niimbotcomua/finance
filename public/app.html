@@ -26,7 +26,11 @@
 </head>
 <body>
   <header class="topbar">
-    <a href="#/" class="brand" aria-label="На головну">💸 Спільні витрати</a>
+    <a href="#/" class="brand" aria-label="На головну"><img class="brand-logo" alt="Спільні витрати" height="40"></a>
+    <script>
+      // Логотип одразу, без проміжного тексту: вбудований під поточний дизайн (свій логотип адміна підставить app.js).
+      document.querySelector('.brand-logo').src = '/logos/' + (document.documentElement.dataset.design === 'dark' ? 'dark' : 'nova') + '.png';
+    </script>
     <div id="userbox"></div>
   </header>
   <main id="app" aria-live="polite"></main>
