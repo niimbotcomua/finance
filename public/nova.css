@@ -39,7 +39,6 @@ html[data-design="nova"] .topbar { padding: 8px 16px; min-height: 60px; }
 html[data-design="nova"] .topbar .me { color: var(--text); }
 html[data-design="nova"] .topbar .avatar { width: 36px; height: 36px; font-size: 14px; box-shadow: inset 0 0 0 1px var(--border) !important; }
 html[data-design="nova"] .topbar button.secondary { padding: 8px 14px; font-size: 12px; min-height: 36px; }
-html[data-design="nova"] .brand-logo { height: 44px; width: 110px; object-position: left center; }
 
 /* Плитки: сірі, без тіней, невеликі заокруглення */
 html[data-design="nova"] .card { box-shadow: none; }
