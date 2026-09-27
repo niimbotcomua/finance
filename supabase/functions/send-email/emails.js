@@ -49,12 +49,12 @@ function compose(templateName, to, vars) {
 /**
  * Перетворює дані від Supabase ({ user, email_data }) на список листів { to, subject, html, text }.
  * Порожній список — для дій, яких застосунок не використовує.
+ * siteUrl — адреса сайту. Поле email_data.site_url не годиться: там службова адреса Supabase (…supabase.co/auth/v1).
  */
-export function buildEmails({ user, email_data: data }) {
+export function buildEmails({ user, email_data: data }, siteUrl) {
   const action = ACTIONS[data.email_action_type];
   if (!action) return [];
-  const siteUrl = String(data.site_url || '').replace(/\/+$/, '');
-  const base = { SiteURL: siteUrl, Email: user.email, NewEmail: user.new_email ?? '' };
+  const base = { SiteURL: String(siteUrl).replace(/\/+$/, ''), Email: user.email, NewEmail: user.new_email ?? '' };
 
   if (data.email_action_type !== 'email_change') {
     return [compose(action.template, user.email, { ...base, TokenHash: data.token_hash })];

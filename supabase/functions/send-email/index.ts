@@ -13,6 +13,7 @@ const transport = nodemailer.createTransport({
   secure: true,
   auth: { user: SMTP_USER, pass: Deno.env.get('SMTP_PASSWORD') },
 });
+const SITE_URL = Deno.env.get('SITE_URL') ?? 'https://finance.chinnect24.com';
 const FROM = { name: 'Спільні витрати', address: SMTP_USER };
 
 const json = (body: unknown, status = 200) =>
@@ -29,7 +30,7 @@ Deno.serve(async (req) => {
     return json({ error: { http_code: 401, message: 'Invalid signature' } }, 401);
   }
   try {
-    const emails = buildEmails(data);
+    const emails = buildEmails(data, SITE_URL);
     if (!emails.length) console.warn('send-email: пропущено дію', data.email_data?.email_action_type);
     for (const email of emails) await transport.sendMail({ from: FROM, ...email });
     return json({});
