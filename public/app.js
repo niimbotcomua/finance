@@ -1010,14 +1010,17 @@ function brandingSettingsCard(meta) {
 
 // ---------- Вхід / реєстрація ----------
 
-/** Ліва половина сторінки входу: заголовок і анімована сцена — Ділюша йде й витрачає гроші (public/img/dilyusha-walk.svg). */
+/** Ліва половина сторінки входу: заголовок і анімована сцена — Ділюша йде й витрачає гроші
+ * (public/img/dilyusha-walk.svg; на телефоні — низька широка dilyusha-walk-wide.svg, щоб не займати пів екрана). */
 function authHero() {
   return h('section', { class: 'auth-hero' },
     h('div', { class: 'auth-hero-text' },
       h('p', { class: 'auth-kicker' }, 'Спільні витрати'),
       h('h2', {}, 'Рахуйте разом.', h('br'), 'Діліть чесно.'),
       h('p', {}, 'Поїздки, квартира, вечірки — додавайте витрати, а Ділюша порахує, хто кому скільки винен.')),
-    h('img', { class: 'auth-hero-art', src: '/img/dilyusha-walk.svg', alt: 'Ділюша йде й думає про витрати: падел, кава, кальян', width: 600, height: 470 }));
+    h('picture', {},
+      h('source', { media: '(max-width: 860px)', srcset: '/img/dilyusha-walk-wide.svg', width: '600', height: '240' }),
+      h('img', { class: 'auth-hero-art', src: '/img/dilyusha-walk.svg', alt: 'Ділюша йде й думає про витрати: падел, кава, кальян', width: 600, height: 470 })));
 }
 
 /** Сторінка входу на два екрани: ліворуч — ілюстрація, праворуч — форма (на телефоні — одна під одною). */
