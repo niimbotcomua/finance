@@ -2645,7 +2645,7 @@ function expenseFormCard(groupId, members, categories, rates, reload, editing = 
   updateConvertHint();
 
   const exactBox = h('div', { class: 'shares', hidden: isEqual },
-    members.map((m, i) => h('label', {}, h('span', { class: 'person' }, avatar(m, 'xs'), memberName(m)), shareInputs[i])),
+    members.map((m, i) => h('label', {}, h('span', { class: 'person' }, avatar(m, 'xs'), h('span', {}, memberName(m), ' ', h('span', { class: 'spent' }, 'витратив(ла)'))), shareInputs[i])),
     shareHint,
   );
   splitType.addEventListener('change', () => {

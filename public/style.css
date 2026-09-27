@@ -309,6 +309,7 @@ ul.list li.is-me {
 .checks.pick label:has(input:focus-visible) { outline: 2px solid var(--accent-2); outline-offset: 2px; }
 .checks.pick label:not(:has(input:checked)) { color: var(--muted); }
 .shares label .person { gap: 8px; }
+.shares .spent { color: var(--muted); font-size: 14px; white-space: nowrap; margin-left: 2px; }
 
 /* Нижня панель розділів (як у mono) */
 body.has-tabbar main { padding-bottom: 120px; }
