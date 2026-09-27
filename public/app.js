@@ -235,12 +235,12 @@ const logoFor = (design) => siteLogos?.[design] ?? siteMeta?.logo_path ?? null;
 function renderBrand() {
   const brand = document.querySelector('.topbar .brand');
   if (!brand) return;
-  const logo = logoFor(document.documentElement.dataset.design);
-  if (logo) {
-    brand.replaceChildren(h('img', { class: 'brand-logo', src: brandingUrl(logo), alt: siteMeta?.site_title ?? 'Логотип' }));
-  } else {
-    brand.replaceChildren('💸 Спільні витрати');
-  }
+  const design = document.documentElement.dataset.design;
+  const logo = logoFor(design);
+  // Без завантаженого адміном логотипу — вбудований, підфарбований під дизайн.
+  const src = logo ? brandingUrl(logo) : `/logos/${DESIGNS[design] ? design : 'dark'}.png`;
+  if (brand.firstElementChild?.getAttribute('src') === src) return;
+  brand.replaceChildren(h('img', { class: 'brand-logo', src, alt: siteMeta?.site_title ?? 'Спільні витрати' }));
 }
 
 async function loadSiteMeta() {
@@ -859,7 +859,7 @@ async function renderAdmin() {
   );
 }
 
-/** Адмінка: логотип (2:1), назва й опис сайту, картинка-прев'ю для соцмереж. */
+/** Адмінка: логотип (горизонтальний), назва й опис сайту, картинка-прев'ю для соцмереж. */
 function brandingSettingsCard(meta) {
   const state = {
     og: { path: meta?.og_image_path ?? null, file: null },
@@ -919,7 +919,7 @@ function brandingSettingsCard(meta) {
           h('span', { class: 'design-name' }, d.label),
           current ? h('span', { class: 'badge' }, 'зараз увімкнено') : null),
         h('div', { class: `logo-frame logo-frame-${design}` },
-          path ? h('img', { src: brandingUrl(path), alt: `Логотип для дизайну «${d.label}»` }) : h('span', {}, '💸 Спільні витрати')),
+          h('img', { src: path ? brandingUrl(path) : `/logos/${design}.png`, alt: `Логотип для дизайну «${d.label}»` })),
         h('div', { class: 'btn-row' },
           h('button', {
             type: 'button', class: 'secondary',
@@ -1002,8 +1002,8 @@ function brandingSettingsCard(meta) {
   return h('div', { class: 'card' },
     h('h2', {}, 'Брендинг і SEO'),
     h('h3', {}, 'Логотип для кожного дизайну'),
-    h('p', { class: 'sub' }, 'Показується зліва вгорі замість назви. Для кожного дизайну — свій (наприклад, світлий логотип на темну шапку). '
-      + 'Пропорція 2:1 (800×400) — інші картинки впишемо в цю рамку. Найкраще — PNG з прозорим тлом. Зберігається одразу.'),
+    h('p', { class: 'sub' }, 'Показується зліва вгорі. Для кожного дизайну — свій (наприклад, світлий логотип на темну шапку). '
+      + 'Без завантаженого файлу стоїть вбудований логотип. Найкраще — горизонтальний PNG з прозорим тлом, 960×128. Зберігається одразу.'),
     logoBox,
     form);
 }
