@@ -9,7 +9,6 @@ export function buildExpenseEmails(data, siteUrl) {
   return (data.recipients ?? []).map((r) => {
     const html = emailLayout({
       siteUrl: site,
-    siteUrl: site,
       title: 'Нова витрата 💸',
       body: paragraph('У групі ', { strong: `«${data.group_name}»` }, ' додали витрату.')
         + details([
