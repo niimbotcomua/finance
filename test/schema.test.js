@@ -649,3 +649,20 @@ test('Telegram: баланс у повідомленні й екрануванн
   assert.equal(await one("select private.telegram_balance_line(-5, 'USD') as v"), '🔴 Ваш баланс у групі: <b>−0,05 USD</b> — ви винні');
   assert.equal(await one("select private.telegram_balance_line(0, 'UAH') as v"), '⚪️ Ваш баланс у групі: <b>0,00 грн</b> — усе сплачено');
 });
+
+test('перегляди витрати: автор уже бачив, учасники позначають, чужі — ні', async () => {
+  const [{ create_group: gid }] = await as('anna', 'select public.create_group($1)', ['Перегляди']);
+  await as('anna', 'select public.add_group_member($1, $2)', [gid, 'bohdan@example.com']);
+  const [{ add_expense: eid }] = await as('anna',
+    'select public.add_expense(gid => $1, description => $2, amount => 100, paid_by => $3, shares => $4::jsonb)',
+    [gid, 'Чай', users.anna, JSON.stringify([{ user_id: users.anna, amount: 100 }])]);
+  const viewers = async (who) => (await as(who, 'select user_id from public.expense_views where expense_id = $1', [eid]))
+    .map((r) => r.user_id).sort();
+  assert.deepEqual(await viewers('bohdan'), [users.anna]);
+  await as('bohdan', 'select public.mark_expense_viewed($1)', [eid]);
+  await as('bohdan', 'select public.mark_expense_viewed(eid => $1)', [eid]); // повторно — без помилки
+  assert.deepEqual(await viewers('anna'), [users.anna, users.bohdan].sort());
+  await rejects(as('stranger', 'select public.mark_expense_viewed($1)', [eid]), 'Витрату не знайдено');
+  assert.deepEqual(await viewers('stranger'), []);
+  await rejects(as('bohdan', 'insert into public.expense_views (expense_id, user_id) values ($1, $2)', [eid, users.vira]), 'permission denied');
+});
