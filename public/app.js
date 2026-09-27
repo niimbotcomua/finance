@@ -6,6 +6,10 @@ import { filterByPeriod, summarize } from './analytics.js';
 import { REPORT_PERIODS, buildPdfDoc, buildReport, writeWorkbook } from './report.js';
 import { FILTER_PERIODS, GROUP_BALANCE_FILTERS, filterExpenses, filterGroups, isFiltered } from './filters.js';
 
+// Посилання «Створити новий пароль» з листа повертає людину з #…&type=recovery; запам'ятовуємо це до того,
+// як клієнт Supabase обробить і прибере токен з адреси.
+let passwordRecovery = new URLSearchParams(location.hash.slice(1)).get('type') === 'recovery';
+
 const configured = SUPABASE_URL.startsWith('https://') && !SUPABASE_ANON_KEY.includes('ВСТАВТЕ');
 const supabase = configured ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
@@ -152,6 +156,8 @@ const ERROR_TRANSLATIONS = {
   'User already registered': 'Користувач з таким email вже існує',
   'Email not confirmed': 'Спершу підтвердіть email — перейдіть за посиланням у листі',
   'Password should be at least': 'Пароль занадто короткий (мінімум 8 символів)',
+  'should be different from the old password': 'Новий пароль має відрізнятися від старого',
+  'only request this after': 'Лист уже надіслано — зачекайте хвилину перед повторною спробою',
   'rate limit': 'Забагато спроб, спробуйте трохи пізніше',
   'row-level security': 'Недостатньо прав для цієї дії',
 };
@@ -905,6 +911,61 @@ function brandingSettingsCard(meta) {
 
 // ---------- Вхід / реєстрація ----------
 
+/** Запит листа для відновлення пароля. */
+function renderForgotPassword(email = '') {
+  const error = h('div', { class: 'error' });
+  const form = h('form', {},
+    h('label', {}, 'Email', h('input', { name: 'email', type: 'email', required: true, autocomplete: 'email', value: email })),
+    error,
+    h('button', { type: 'submit' }, 'Надіслати посилання'),
+  );
+  form.addEventListener('submit', submitHandler(form, error, async (data) => {
+    const address = String(data.get('email')).trim();
+    await run(supabase.auth.resetPasswordForEmail(address, { redirectTo: `${location.origin}${location.pathname}` }));
+    mount(
+      h('div', { class: 'card auth' },
+        h('h1', {}, 'Перевірте пошту'),
+        h('p', {}, `Якщо акаунт з адресою ${address} існує, ми надіслали на неї лист. Перейдіть за посиланням у ньому, щоб створити новий пароль.`),
+        h('a', { href: '#/login', onClick: () => renderAuth() }, '← До входу'),
+      ),
+    );
+  }));
+  mount(
+    h('div', { class: 'card auth' },
+      h('h1', {}, 'Відновлення пароля'),
+      h('p', { class: 'sub' }, 'Вкажіть email, з яким ви реєструвалися, — надішлемо посилання для створення нового пароля.'),
+      form,
+      h('a', { href: '#/login', onClick: () => renderAuth() }, '← До входу'),
+    ),
+  );
+}
+
+/** Новий пароль після переходу за посиланням з листа (людина вже увійшла через це посилання). */
+function renderResetPassword() {
+  const error = h('div', { class: 'error' });
+  const form = h('form', {},
+    h('label', {}, 'Новий пароль', h('input', { name: 'password', type: 'password', required: true, minLength: 8, autocomplete: 'new-password' })),
+    h('label', {}, 'Повторіть пароль', h('input', { name: 'confirm', type: 'password', required: true, minLength: 8, autocomplete: 'new-password' })),
+    error,
+    h('button', { type: 'submit' }, 'Зберегти пароль'),
+  );
+  form.addEventListener('submit', submitHandler(form, error, async (data) => {
+    const password = String(data.get('password'));
+    if (password !== String(data.get('confirm'))) throw new Error('Паролі не збігаються');
+    await run(supabase.auth.updateUser({ password }));
+    passwordRecovery = false;
+    toast('Пароль змінено');
+    location.hash = '#/';
+  }));
+  mount(
+    h('div', { class: 'card auth' },
+      h('h1', {}, 'Новий пароль'),
+      h('p', { class: 'sub' }, 'Придумайте новий пароль — щонайменше 8 символів.'),
+      form,
+    ),
+  );
+}
+
 /** Кольоровий логотип Google (статичний SVG). */
 function googleIcon() {
   const span = h('span', { class: 'google-icon', 'aria-hidden': 'true' });
@@ -929,12 +990,22 @@ function renderAuth(invite = null) {
     error,
     submit,
   );
+  const forgot = h('a', {
+    href: '#/login',
+    class: 'forgot',
+    onClick: (event) => {
+      event.preventDefault();
+      renderForgotPassword(String(form.querySelector('[name=email]').value).trim());
+    },
+  }, 'Забули пароль?');
+  form.insertBefore(forgot, error);
   const tabLogin = h('button', { type: 'button', onClick: () => setMode('login') }, 'Вхід');
   const tabRegister = h('button', { type: 'button', onClick: () => setMode('register') }, 'Реєстрація');
 
   function setMode(next) {
     mode = next;
     nameField.hidden = mode === 'login';
+    forgot.hidden = mode !== 'login';
     nameField.querySelector('input').required = mode === 'register';
     form.querySelector('[name=password]').autocomplete = mode === 'login' ? 'current-password' : 'new-password';
     submit.textContent = mode === 'login' ? 'Увійти' : 'Зареєструватися';
@@ -2748,6 +2819,14 @@ async function route() {
       currentUser = await loadCurrentUser();
       renderUserbox();
     }
+    if (hash === '#/reset-password') {
+      if (currentUser) renderResetPassword();
+      else {
+        toast('Посилання недійсне або застаріло — запросіть новий лист');
+        location.hash = '#/login';
+      }
+      return;
+    }
     const joinMatch = hash.match(/^#\/join\/([0-9a-f-]{36})$/i);
     if (joinMatch) {
       await renderJoin(joinMatch[1].toLowerCase());
@@ -2800,7 +2879,9 @@ async function start() {
     if (params.get('error_description')) toast(params.get('error_description'));
     history.replaceState(null, '', `${location.pathname}#/`);
   }
+  if (passwordRecovery) history.replaceState(null, '', `${location.pathname}#/reset-password`);
   supabase.auth.onAuthStateChange((event) => {
+    if (event === 'PASSWORD_RECOVERY' && location.hash !== '#/reset-password') location.hash = '#/reset-password';
     if (event === 'SIGNED_OUT') {
       currentUser = null;
       userDesign = null;
