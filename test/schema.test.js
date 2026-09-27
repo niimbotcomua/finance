@@ -580,7 +580,9 @@ test('Telegram: прив\'язка через бота і сповіщення �
   assert.equal(sent[0].url, 'https://api.telegram.org/bot123:ABC/sendMessage');
   assert.equal(sent[0].body.chat_id, 555);
   assert.equal(sent[0].body.text,
-    '💸 Нова витрата в групі «Відпустка»\nГотель — 1 234,56 грн\nЗаплатив(ла): Ганна\nВаша витрата: 617,28 грн');
+    '💸 Нова витрата в групі «Відпустка»\nГотель — 1 234,56 грн\nЗаплатив(ла): Ганна\nВаша витрата: 617,28 грн'
+    + '\n\n<b>Ваш баланс у групі: −617,28 грн — ви винні</b>');
+  assert.equal(sent[0].body.parse_mode, 'HTML');
 
   // /stop і кнопка «Відключити» вимикають сповіщення.
   assert.match((await webhook(secret, '/stop')).text, /вимкнено/);
@@ -631,4 +633,12 @@ test('Пошта: сповіщення про нову витрату лише �
   await as('bohdan', 'update public.profiles set notify_expense_email = false where id = $1', [users.bohdan]);
   await addExpense();
   assert.deepEqual(await mailSent(), []);
+});
+
+test('Telegram: баланс у повідомленні й екранування HTML', async () => {
+  const one = async (sql) => (await db.query(sql)).rows[0].v;
+  assert.equal(await one("select private.telegram_html('A&B <i>') as v"), 'A&amp;B &lt;i&gt;');
+  assert.equal(await one("select private.telegram_balance_line(150000, 'UAH') as v"), '<b>Ваш баланс у групі: +1 500,00 грн — вам винні</b>');
+  assert.equal(await one("select private.telegram_balance_line(-5, 'USD') as v"), '<b>Ваш баланс у групі: −0,05 USD — ви винні</b>');
+  assert.equal(await one("select private.telegram_balance_line(0, 'UAH') as v"), '<b>Ваш баланс у групі: 0,00 грн — усе сплачено</b>');
 });
