@@ -1,0 +1,195 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 470" role="img" aria-label="Ділюша йде й думає про витрати: падел, кава, кальян — а гроші витрачаються">
+  <!-- Анімована сцена для сторінки входу: Ділюша йде зліва направо, у хмаринці по черзі витрати
+       (падел → кава → кальян), до хмаринки летить купюра, спливає ціна, лічильник «Витрачено» росте.
+       Цикл 12 с; лише CSS, тож працює і в <img>. Персонаж — той самий, що в dilyusha.svg. -->
+    <defs>
+    <linearGradient id="iris" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2a1f4f"/>
+      <stop offset="1" stop-color="#7b5cd6"/>
+    </linearGradient>
+    <linearGradient id="hoodie" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffd166"/>
+      <stop offset="1" stop-color="#ffb938"/>
+    </linearGradient>
+    <g id="wing">
+      <rect x="-128" y="-15" width="140" height="30" rx="15" fill="#ffffff" transform="rotate(38)"/>
+      <rect x="-108" y="-15" width="120" height="30" rx="15" fill="#ffe1dc" transform="rotate(16)"/>
+      <rect x="-86" y="-15" width="98" height="30" rx="15" fill="#ffc2b8" transform="rotate(-6)"/>
+    </g>
+    <!-- Купюра (як у логотипі), центр у 0,0: 224×132 -->
+    <g id="note">
+      <rect x="-112" y="-66" width="224" height="132" rx="18" fill="#ffffff" stroke="#b81d12" stroke-width="8"/>
+      <rect x="-94" y="-48" width="188" height="96" rx="8" fill="none" stroke="#da291c" stroke-width="6" stroke-dasharray="2 11" stroke-linecap="round" opacity=".5"/>
+      <circle r="40" fill="#da291c"/>
+      <path d="M-15 -17 C-8 -30 20 -28 18 -11 C16 2 -18 2 -19 17 C-20 32 8 33 19 21" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round"/>
+      <path d="M-26 -3 H26 M-26 10 H26" stroke="#fff" stroke-width="7" stroke-linecap="round"/>
+    </g>
+    <g id="flying">
+      <use href="#wing" transform="translate(-100 -20)"/>
+      <use href="#wing" transform="translate(100 -20) scale(-1 1)"/>
+      <use href="#note"/>
+    </g>
+  </defs>
+  <style>
+    .walker { animation: walk 12s linear infinite; }
+    .bob { animation: bob .5s ease-in-out infinite alternate; }
+    .legL { transform-origin: 184px 334px; animation: step .5s ease-in-out infinite alternate; }
+    .legR { transform-origin: 216px 334px; animation: step .5s ease-in-out infinite alternate-reverse; }
+    .armL { transform-origin: 166px 262px; animation: swing .5s ease-in-out infinite alternate-reverse; }
+    .armR { transform-origin: 234px 262px; animation: swing .5s ease-in-out infinite alternate; }
+    .eye { transform-box: fill-box; transform-origin: center; animation: blink 4.2s infinite; }
+    #ahoge { transform-origin: 204px 94px; animation: sway 1s ease-in-out infinite alternate; }
+    #clip { transform-box: fill-box; transform-origin: center; }
+    .slot { opacity: 0; transform-box: fill-box; transform-origin: center; animation: slot 12s infinite both; }
+    .tag { opacity: 0; transform-box: fill-box; transform-origin: center; animation: tag 12s infinite both; }
+    .s2 { animation-delay: -8s; }
+    .s3 { animation-delay: -4s; }
+    .cash { opacity: 0; animation: cash 4s ease-in infinite; }
+    .shadow { animation: shadow .5s ease-in-out infinite alternate; transform-box: fill-box; transform-origin: center; }
+    @keyframes walk { 0% { transform: translate(104px, 50px); opacity: 0; } 3% { opacity: 1; } 96% { opacity: 1; } 100% { transform: translate(482px, 50px); opacity: 0; } }
+    @keyframes bob { from { transform: translateY(0); } to { transform: translateY(-5px); } }
+    @keyframes step { from { transform: rotate(-18deg); } to { transform: rotate(18deg); } }
+    @keyframes swing { from { transform: rotate(-16deg); } to { transform: rotate(16deg); } }
+    @keyframes blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.08); } }
+    @keyframes sway { from { transform: rotate(-8deg); } to { transform: rotate(8deg); } }
+    @keyframes shadow { from { transform: scaleX(1); } to { transform: scaleX(.9); } }
+    @keyframes slot { 0% { opacity: 0; transform: scale(.5); } 3% { opacity: 1; transform: scale(1.12); } 6% { transform: scale(1); } 30% { opacity: 1; transform: scale(1); } 33.3%, 100% { opacity: 0; transform: scale(.8); } }
+    @keyframes tag { 0%, 9% { opacity: 0; transform: translateY(10px) scale(.6); } 12% { opacity: 1; transform: translateY(0) scale(1.1); } 15%, 29% { opacity: 1; transform: translateY(0) scale(1); } 33.3%, 100% { opacity: 0; transform: translateY(-14px) scale(1); } }
+    @keyframes cash { 0% { opacity: 0; transform: translate(0, 0) scale(1) rotate(0); } 6% { opacity: 1; } 30% { opacity: 1; transform: translate(-40px, -205px) scale(.6) rotate(-20deg); } 38%, 100% { opacity: 0; transform: translate(-44px, -225px) scale(.3) rotate(-25deg); } }
+    @media (prefers-reduced-motion: reduce) {
+      * { animation: none !important; }
+      .walker { transform: translate(300px, 50px); }
+      .s1 { opacity: 1; }
+    }
+  </style>
+
+  <!-- Лічильник витрат -->
+  <text x="24" y="32" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="15" font-weight="800" fill="#fff" opacity=".85" letter-spacing="1">ВИТРАЧЕНО</text>
+  <text class="slot s1" x="24" y="66" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="26" font-weight="900" fill="#fff">350 ₴</text>
+  <text class="slot s2" x="24" y="66" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="26" font-weight="900" fill="#fff">440 ₴</text>
+  <text class="slot s3" x="24" y="66" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="26" font-weight="900" fill="#fff">1 040 ₴</text>
+
+  <g class="walker">
+    <!-- Тінь -->
+    <ellipse class="shadow" cx="0" cy="402" rx="58" ry="8" fill="#000" opacity=".16"/>
+
+    <!-- Хмаринка-думка з витратами -->
+    <g transform="translate(-10 118)">
+      <circle cx="18" cy="96" r="6" fill="#fff"/>
+      <circle cx="30" cy="78" r="9" fill="#fff"/>
+      <path d="M-62 48 Q-92 44 -88 14 Q-100 -20 -64 -28 Q-58 -66 -18 -60 Q6 -86 40 -62 Q80 -70 84 -32 Q112 -18 96 16 Q100 50 62 50 Q40 70 6 56 Q-30 72 -62 48 Z" fill="#fff"/>
+
+    <!-- 1. Падел: ракетка й м'ячик -->
+    <g class="slot s1">
+      <g transform="translate(-4 -8) rotate(-28)">
+        <rect x="-5" y="12" width="10" height="30" rx="4" fill="#2b2446"/>
+        <rect x="-6" y="30" width="12" height="4" rx="2" fill="#da291c"/>
+        <ellipse cy="-10" rx="25" ry="29" fill="#1f6feb"/>
+        <ellipse cy="-10" rx="25" ry="29" fill="none" stroke="#0b3d91" stroke-width="4"/>
+        <g fill="#8fb8ff"><circle cx="-9" cy="-22" r="3"/><circle cx="0" cy="-22" r="3"/><circle cx="9" cy="-22" r="3"/><circle cx="-13" cy="-12" r="3"/><circle cx="-4" cy="-12" r="3"/><circle cx="5" cy="-12" r="3"/><circle cx="14" cy="-12" r="3"/><circle cx="-9" cy="-2" r="3"/><circle cx="0" cy="-2" r="3"/><circle cx="9" cy="-2" r="3"/></g>
+      </g>
+      <circle cx="30" cy="10" r="8" fill="#d8f23a" stroke="#a9c21a" stroke-width="2"/>
+      <text y="44" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="14" font-weight="800" fill="#2b2446">Падел</text>
+    </g>
+    <!-- 2. Кава -->
+    <g class="slot s2">
+      <path d="M-8 -30 Q-14 -38 -8 -46 M4 -30 Q-2 -38 4 -46" fill="none" stroke="#b9b3c9" stroke-width="3.5" stroke-linecap="round"/>
+      <path d="M-20 -24 H20 L15 26 Q14 30 10 30 H-10 Q-14 30 -15 26 Z" fill="#f4e3c9"/>
+      <rect x="-23" y="-28" width="46" height="8" rx="4" fill="#5b3a1e"/>
+      <path d="M-18 -4 H18 L16 12 H-16 Z" fill="#8b5a2b"/>
+      <circle cx="0" cy="4" r="4" fill="#f4e3c9"/>
+      <text y="44" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="14" font-weight="800" fill="#2b2446">Кава</text>
+    </g>
+    <!-- 3. Кальян -->
+    <g class="slot s3">
+      <circle cx="-14" cy="-44" r="5" fill="#d9d4e6"/><circle cx="-22" cy="-52" r="4" fill="#e6e2ef"/>
+      <path d="M-8 -34 H8 L5 -26 H-5 Z" fill="#b5651d"/>
+      <circle cx="-3" cy="-36" r="2" fill="#ff5a36"/><circle cx="3" cy="-36" r="2" fill="#ff5a36"/>
+      <rect x="-14" y="-26" width="28" height="4" rx="2" fill="#c9a227"/>
+      <rect x="-3" y="-22" width="6" height="24" fill="#c9a227"/>
+      <path d="M-16 2 Q-24 16 -14 28 H14 Q24 16 16 2 Z" fill="#8e6bf0"/>
+      <path d="M-10 8 Q-14 16 -8 22" fill="none" stroke="#c9b8ff" stroke-width="3" stroke-linecap="round"/>
+      <path d="M3 -10 Q30 -8 28 14 Q27 26 34 30" fill="none" stroke="#2b2446" stroke-width="3" stroke-linecap="round"/>
+      <rect x="31" y="28" width="6" height="8" rx="2" fill="#c9a227"/>
+      <text y="44" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="14" font-weight="800" fill="#2b2446">Кальян</text>
+    </g>
+    </g>
+    <!-- Ціна купівлі -->
+    <g transform="translate(70 178)">
+    <g class="tag s1"><rect x="-44" y="-17" width="88" height="34" rx="17" fill="#2b2446"/>
+      <text y="7" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="18" font-weight="800" fill="#ffd166">−350 ₴</text></g>
+    <g class="tag s2"><rect x="-44" y="-17" width="88" height="34" rx="17" fill="#2b2446"/>
+      <text y="7" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="18" font-weight="800" fill="#ffd166">−90 ₴</text></g>
+    <g class="tag s3"><rect x="-44" y="-17" width="88" height="34" rx="17" fill="#2b2446"/>
+      <text y="7" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="18" font-weight="800" fill="#ffd166">−600 ₴</text></g>
+    </g>
+
+    <!-- Ділюша (масштаб 0,6; центр — x = 0, ноги на y ≈ 400) -->
+    <g transform="translate(-120 178) scale(.6)">
+      <g class="bob">
+  <!-- Волосся ззаду -->
+  <path d="M112 170 Q110 82 200 76 Q290 82 288 170 L292 236 Q280 246 262 238 L262 196 H138 L138 238 Q120 246 108 236 Z" fill="#3b2f63"/>
+        <!-- Ноги -->
+        <g class="legL"><rect x="174" y="330" width="20" height="40" rx="9" fill="#2b2446"/><ellipse cx="182" cy="370" rx="17" ry="9" fill="#ffffff"/></g>
+        <g class="legR"><rect x="206" y="330" width="20" height="40" rx="9" fill="#2b2446"/><ellipse cx="218" cy="370" rx="17" ry="9" fill="#ffffff"/></g>
+        <!-- Руки -->
+        <g class="armL"><path d="M166 262 Q150 290 152 318" fill="none" stroke="url(#hoodie)" stroke-width="22" stroke-linecap="round"/><circle cx="152" cy="322" r="12" fill="#ffe3d3"/></g>
+  <!-- Худі -->
+  <path d="M160 246 Q200 234 240 246 Q256 252 258 272 L262 336 Q262 346 250 346 H150 Q138 346 138 336 L142 272 Q144 252 160 246 Z" fill="url(#hoodie)"/>
+  <path d="M170 300 H230 V326 Q230 332 224 332 H176 Q170 332 170 326 Z" fill="#ffc24d"/>
+  <path d="M184 250 L181 284 M216 250 L219 284" stroke="#fff4d6" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="181" cy="287" r="4" fill="#fff4d6"/>
+  <circle cx="219" cy="287" r="4" fill="#fff4d6"/>
+        <g class="armR">
+          <path d="M234 262 Q250 290 248 318" fill="none" stroke="url(#hoodie)" stroke-width="22" stroke-linecap="round"/>
+          <!-- Гаманець -->
+          <rect x="232" y="312" width="40" height="28" rx="6" fill="#da291c"/><rect x="232" y="312" width="40" height="10" rx="5" fill="#b81d12"/><circle cx="264" cy="327" r="3" fill="#ffd166"/>
+          <circle cx="248" cy="322" r="12" fill="#ffe3d3"/>
+        </g>
+  <!-- Шия й обличчя -->
+  <rect x="188" y="226" width="24" height="22" rx="8" fill="#f7cdb8"/>
+  <ellipse cx="200" cy="176" rx="72" ry="66" fill="#ffe3d3"/>
+
+  <!-- Очі -->
+  <g class="eye">
+    <ellipse cx="170" cy="184" rx="16" ry="21" fill="#ffffff"/>
+    <ellipse cx="171" cy="187" rx="13" ry="18" fill="url(#iris)"/>
+    <ellipse cx="171" cy="190" rx="6" ry="9" fill="#1b1433"/>
+    <circle cx="165" cy="179" r="5.5" fill="#ffffff"/>
+    <circle cx="176" cy="196" r="2.5" fill="#ffffff"/>
+    <path d="M153 178 Q166 158 188 170" fill="none" stroke="#2b2446" stroke-width="5" stroke-linecap="round"/>
+  </g>
+  <g class="eye">
+    <ellipse cx="230" cy="184" rx="16" ry="21" fill="#ffffff"/>
+    <ellipse cx="229" cy="187" rx="13" ry="18" fill="url(#iris)"/>
+    <ellipse cx="229" cy="190" rx="6" ry="9" fill="#1b1433"/>
+    <circle cx="223" cy="179" r="5.5" fill="#ffffff"/>
+    <circle cx="234" cy="196" r="2.5" fill="#ffffff"/>
+    <path d="M212 170 Q234 158 247 178" fill="none" stroke="#2b2446" stroke-width="5" stroke-linecap="round"/>
+  </g>
+
+  <path d="M156 152 Q168 146 180 150 M220 150 Q232 146 244 152" fill="none" stroke="#3b2f63" stroke-width="4" stroke-linecap="round"/>
+
+  <!-- Рум'янець і усмішка -->
+  <ellipse cx="148" cy="210" rx="12" ry="6.5" fill="#ff8a95" opacity=".55"/>
+  <ellipse cx="252" cy="210" rx="12" ry="6.5" fill="#ff8a95" opacity=".55"/>
+  <path d="M188 210 Q200 228 212 210 Z" fill="#c2334a" stroke="#c2334a" stroke-width="3" stroke-linejoin="round"/>
+  <path d="M194 218 Q200 214 206 218 Q200 223 194 218 Z" fill="#ff8a95"/>
+
+  <!-- Чубчик -->
+  <path d="M126 170 Q124 96 200 92 Q276 96 274 170 L262 150 L252 166 L240 132 L226 158 L212 128 L200 156 L186 126 L172 158 L160 132 L148 166 L138 150 Z" fill="#3b2f63"/>
+  <path d="M152 112 Q176 98 204 100" fill="none" stroke="#5b4a91" stroke-width="6" stroke-linecap="round"/>
+  <!-- Стирчик -->
+  <path id="ahoge" d="M200 94 Q192 60 218 58 Q206 70 214 92" fill="#3b2f63"/>
+  <!-- Заколка-монетка -->
+  <g id="clip" class="spin">
+  <circle cx="258" cy="120" r="13" fill="#ffd166" stroke="#e6a817" stroke-width="3"/>
+  <path d="M253 116 Q256 111 261 113 Q264 117 258 120 Q252 123 255 127 Q259 129 263 125 M251 119 H265 M251 122.5 H265" fill="none" stroke="#b7791f" stroke-width="2" stroke-linecap="round"/>
+  </g>
+      </g>
+    </g>
+
+    <!-- Купюра летить з гаманця в хмаринку (кожні 4 с) -->
+    <g transform="translate(34 368)"><g class="cash"><use href="#flying" transform="rotate(-10) scale(.2)"/></g></g>
+  </g>
+</svg>
