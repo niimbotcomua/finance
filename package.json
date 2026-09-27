@@ -6,7 +6,8 @@
   "private": true,
   "scripts": {
     "dev": "node scripts/serve.js",
-    "test": "node --test"
+    "test": "node --test",
+    "build:emails": "node scripts/build-email-templates.js"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8"
