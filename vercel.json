@@ -4,9 +4,27 @@
   "buildCommand": "",
   "outputDirectory": "public",
   "functions": {
-    "api/index.js": { "includeFiles": "public/app.html" }
+    "api/index.js": {
+      "includeFiles": "public/app.html"
+    }
   },
   "rewrites": [
-    { "source": "/", "destination": "/api/index" }
+    {
+      "source": "/",
+      "destination": "/api/index"
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/(.*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "finance-nine-eosin.vercel.app"
+        }
+      ],
+      "destination": "https://finance.chinnect24.com/$1",
+      "permanent": false
+    }
   ]
 }

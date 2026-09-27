@@ -281,7 +281,8 @@ function renderUserbox() {
     h('button', {
       class: 'secondary',
       onClick: async () => {
-        await supabase.auth.signOut();
+        // Лише на цьому пристрої: інакше Supabase за замовчуванням завершує вхід на всіх пристроях людини.
+        await supabase.auth.signOut({ scope: 'local' });
         currentUser = null;
         userDesign = null;
         refreshDesign();
