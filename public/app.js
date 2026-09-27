@@ -1016,7 +1016,7 @@ function authHero() {
   return h('section', { class: 'auth-hero' },
     h('div', { class: 'auth-hero-text' },
       h('p', { class: 'auth-kicker' }, 'Спільні витрати'),
-      h('h2', {}, 'Рахуйте разом.', h('br'), 'Діліть чесно.'),
+      h('h2', {}, 'Рахуйте разом. ', h('br'), 'Діліть чесно.'),
       h('p', {}, 'Поїздки, квартира, вечірки — додавайте витрати, а Ділюша порахує, хто кому скільки винен.')),
     h('picture', {},
       h('source', { media: '(max-width: 860px)', srcset: '/img/dilyusha-walk-wide.svg', width: '600', height: '240' }),

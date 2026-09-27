@@ -775,22 +775,24 @@ body.auth-page main { max-width: none; padding: 0; }
 .auth-side .auth { width: 100%; margin: 0; }
 @media (max-width: 860px) {
   .auth-layout { grid-template-columns: 1fr; min-height: 0; }
-  .auth-hero { gap: 0; padding: 14px 16px 0; }
-  .auth-hero-text h2 { margin: 0; font-size: 22px; }
+  .auth-hero { gap: 0; padding: 10px 16px 0; }
+  .auth-hero-text h2 { margin: 0; font-size: 19px; line-height: 1.2; }
+  .auth-hero-text h2 br { display: none; }
   .auth-hero-text p:last-child, .auth-kicker { display: none; }
-  .auth-hero picture { max-width: 290px; margin: 2px auto -2px; }
-  .auth-side { padding: 12px 12px 24px; }
+  .auth-hero picture { max-width: 250px; margin: 0 auto -2px; }
+  .auth-side { padding: 8px 10px 20px; }
   /* Форма входу компактніша, щоб уся влазила на екран телефона */
-  body.auth-page .auth { padding: 16px; }
-  body.auth-page .auth h1 { margin: 0 0 10px; font-size: 22px; }
+  body.auth-page .auth { padding: 14px; }
+  body.auth-page .auth h1 { margin: 0 0 8px; font-size: 20px; }
   body.auth-page .auth:has(.google-btn) > p.sub { display: none; }
-  body.auth-page .auth .google-btn { padding: 10px; }
-  body.auth-page .auth .divider { margin: 10px 0; font-size: 12px; }
-  body.auth-page .auth .tabs { margin-bottom: 8px; }
-  body.auth-page .auth .tabs button { padding: 8px; }
-  body.auth-page .auth form { gap: 8px; }
-  body.auth-page .auth label { gap: 4px; font-size: 12px; }
-  body.auth-page .auth input { padding: 10px 12px; }
+  body.auth-page .auth .google-btn { padding: 8px; }
+  body.auth-page .auth .divider { margin: 8px 0; font-size: 12px; }
+  body.auth-page .auth .tabs { margin-bottom: 6px; }
+  body.auth-page .auth .tabs button { padding: 7px; }
+  body.auth-page .auth form { gap: 6px; }
+  body.auth-page .auth label { gap: 3px; font-size: 12px; }
+  body.auth-page .auth input { padding: 8px 12px; }
+  body.auth-page .auth form > button[type=submit] { padding: 10px; margin-top: 2px; }
   body.auth-page .auth .forgot { margin-top: -2px; font-size: 13px; }
   body.auth-page .auth .error:empty { min-height: 0; }
 }
