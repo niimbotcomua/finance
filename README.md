@@ -33,7 +33,7 @@
 2. **SQL Editor → New query** → по черзі виконайте файли з [`supabase/migrations/`](supabase/migrations)
    (`001_…`, `002_…`, …): вставте вміст → **Run**. Кожен файл можна виконувати повторно.
 3. **Authentication → URL Configuration → Site URL**: вкажіть адресу сайту на Vercel
-   (напр. `https://finance-xxx.vercel.app`), щоб посилання з листів вели на ваш сайт.
+   (напр. `https://finance.chinnect24.com`), щоб посилання з листів вели на ваш сайт.
 4. **Project Settings → API**: скопіюйте *Project URL* та *anon public key* у
    [`public/config.js`](public/config.js). Ключ `service_role` / `secret` туди **не** вставляйте.
 
