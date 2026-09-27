@@ -730,3 +730,22 @@ ul.list.group-tiles li.group-tile:active { transform: scale(0.99); }
 /* Небезпечний пункт меню (видалення) — окремо внизу, червоним */
 .menu-item.danger { color: var(--negative); margin-top: 4px; box-shadow: 0 -1px 0 var(--border); border-radius: 0 0 12px 12px; }
 html[data-design="nova"] .menu-item.danger { color: var(--negative); }
+
+/* Вибір дизайну (профіль і адмінка): мініатюри-картки */
+.design-options { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.design-option {
+  display: grid; gap: 4px; justify-items: start; text-align: left;
+  padding: 12px; border-radius: 18px; background: var(--card-2); color: var(--text); font-weight: 400;
+  box-shadow: inset 0 0 0 2px transparent;
+}
+.design-option.active { box-shadow: inset 0 0 0 2px var(--accent); }
+.design-name { font-weight: 700; }
+.design-preview {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: 100%; height: 56px; padding: 8px;
+  border-radius: 12px; margin-bottom: 6px;
+}
+.design-preview i { border-radius: 8px; }
+.design-preview i:first-child { grid-column: 1 / -1; }
+.design-preview-dark { background: #0d0d0f; }
+.design-preview-dark i { background: #1c1c20; }
+.design-preview-dark i:first-child { background: linear-gradient(135deg, #ff4f6d, #ff8a4c); }
