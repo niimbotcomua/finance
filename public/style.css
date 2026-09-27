@@ -776,8 +776,7 @@ body.auth-page main { max-width: none; padding: 0; }
 @media (max-width: 860px) {
   .auth-layout { grid-template-columns: 1fr; min-height: 0; }
   .auth-hero { gap: 0; padding: 10px 16px 0; }
-  .auth-hero-text h2 { margin: 0; font-size: 19px; line-height: 1.2; }
-  .auth-hero-text h2 br { display: none; }
+  .auth-hero-text h2 { margin: 0; font-size: 21px; line-height: 1.15; }
   .auth-hero-text p:last-child, .auth-kicker { display: none; }
   .auth-hero picture { max-width: 250px; margin: 0 auto -2px; }
   .auth-side { padding: 8px 10px 20px; }
