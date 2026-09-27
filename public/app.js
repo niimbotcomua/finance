@@ -1463,7 +1463,7 @@ async function renderGroups(showArchive = false) {
 // ---------- Сторінка групи ----------
 
 async function renderGroup(groupId) {
-  const [group, memberRows, expenseRows, settlementRows, categories, history, rateRows] = await Promise.all([
+  const [group, memberRows, expenseRows, settlementRows, categories, history, rateRows, viewRows] = await Promise.all([
     run(supabase.from('groups').select('id, name, currency, invite_token, created_by').eq('id', groupId).maybeSingle()),
     run(supabase.from('group_members').select('user_id, archived_at, profiles (id, name, email, avatar_path)').eq('group_id', groupId).order('id')),
     run(supabase.from('expenses')
@@ -1483,6 +1483,9 @@ async function renderGroup(groupId) {
       .order('id', { ascending: false })
       .limit(200)),
     run(supabase.from('group_rates').select('currency, rate, updated_at').eq('group_id', groupId)),
+    // Хто переглянув витрати (міграція 024); без неї — просто без позначок.
+    run(supabase.from('expense_views').select('expense_id, user_id, viewed_at, expenses!inner(group_id)').eq('expenses.group_id', groupId))
+      .catch(() => []),
     loadCurrencies(),
   ]);
   if (!group) throw new Error('Групу не знайдено');
@@ -1513,6 +1516,9 @@ async function renderGroup(groupId) {
     currency: e.currency,
     originalAmount: e.original_amount === null ? null : Number(e.original_amount),
     rate: e.rate === null ? null : Number(e.rate),
+    views: viewRows.filter((v) => v.expense_id === e.id)
+      .map((v) => ({ userId: v.user_id, viewedAt: v.viewed_at }))
+      .sort((a, b) => a.viewedAt.localeCompare(b.viewedAt)),
   }));
   const settlements = settlementRows.map((s) => ({
     id: s.id, fromUser: s.from_user, toUser: s.to_user, amount: Number(s.amount), date: s.date,
@@ -1618,7 +1624,7 @@ async function renderGroup(groupId) {
       balancesCard(balances, profileOf),
       h('div', {}, formSlot),
     ),
-    expensesCard(groupId, expenses, profileOf, reload, showExpenseForm),
+    expensesCard(groupId, expenses, profileOf, reload, showExpenseForm, members),
     settlementsCard(groupId, settlements, nameOf, reload),
   );
 }
@@ -2847,7 +2853,31 @@ function myShareCell(e) {
     e.paidBy === currentUser.id ? h('div', { class: 'sub' }, 'ви платили') : null);
 }
 
-function expensesCard(groupId, allExpenses, profileOf, reload, onEdit) {
+/** Коротка дата й час перегляду: «27.09, 21:05». */
+const formatViewTime = (iso) => new Date(iso).toLocaleString('uk-UA', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+
+/** Блок «Переглянули» в розгорнутій витраті: хто й коли бачив, і хто ще ні. */
+function expenseViewsField(e, profileOf, members) {
+  const seen = new Set(e.views.map((v) => v.userId));
+  const notSeen = members.filter((m) => m && !seen.has(m.id));
+  return h('div', { class: 'field expense-views' },
+    h('span', { class: 'field-label' }, '👁 Переглянули'),
+    e.views.length
+      ? h('div', { class: 'pills' }, e.views.map((v) => {
+        const profile = profileOf(v.userId);
+        return h('span', { class: 'pill', title: `Переглянуто ${formatViewTime(v.viewedAt)}` },
+          avatar(profile, 'xs'), memberName(profile), h('span', { class: 'pill-amount' }, formatViewTime(v.viewedAt)));
+      }))
+      : h('span', { class: 'sub' }, 'Ще ніхто не переглядав'),
+    notSeen.length ? h('div', { class: 'sub' }, `Ще не бачили: ${notSeen.map((m) => m.name).join(', ')}`) : null);
+}
+
+/** Позначка переглядів у згорнутому рядку: «👁 2 з 3». */
+const expenseViewsTag = (e, members) => h('span', {
+  class: 'tag tag-views', title: `Переглянули ${e.views.length} з ${members.length}`,
+}, `👁 ${e.views.length} з ${members.length}`);
+
+function expensesCard(groupId, allExpenses, profileOf, reload, onEdit, members = []) {
   const f = groupUi.expenseFilter;
   const expenseItem = (e) => {
     // Рівний поділ: частки відрізняються щонайбільше на копійку (залишок від ділення).
@@ -2867,9 +2897,10 @@ function expensesCard(groupId, allExpenses, profileOf, reload, onEdit) {
         myShareCell(e),
         h('span', { class: 'chevron', 'aria-hidden': 'true' }, '›'),
         // Теги — окремим рядком на всю ширину, щоб довгі назви вміщались повністю.
-        (e.category || e.photoUrls.some(Boolean)) ? h('div', { class: 'expense-meta' },
+        (e.category || e.photoUrls.some(Boolean) || e.views.length) ? h('div', { class: 'expense-meta' },
           e.category ? h('span', { class: 'tag' }, categoryLabel(e.category)) : null,
-          e.photoUrls.some(Boolean) ? h('span', { class: 'tag tag-photo', title: 'Є фото' }, `📷 ${e.photoUrls.filter(Boolean).length}`) : null) : null,
+          e.photoUrls.some(Boolean) ? h('span', { class: 'tag tag-photo', title: 'Є фото' }, `📷 ${e.photoUrls.filter(Boolean).length}`) : null,
+          e.views.length ? expenseViewsTag(e, members) : null) : null,
       ),
       h('div', { class: 'expense-body' },
         e.photoUrls.some(Boolean) && photoCarousel(e.photoUrls.filter(Boolean).map((src) => ({ src }))),
@@ -2883,6 +2914,7 @@ function expensesCard(groupId, allExpenses, profileOf, reload, onEdit) {
         ),
         e.currency ? h('div', { class: 'sub' },
           `${currencyLabel(e.currency)} → ${currencyLabel(baseCurrency)}: 1 ${currencySymbol(e.currency)} = ${formatRate(e.rate)} ${currencySymbol(baseCurrency)}`) : null,
+        expenseViewsField(e, profileOf, members),
         h('div', { class: 'expense-actions' },
           e.edited ? h('span', { class: 'sub' }, 'змінено') : null,
           h('button', { class: 'link edit', title: 'Редагувати витрату', onClick: () => onEdit(e) }, '✎ Редагувати'),
@@ -2908,6 +2940,19 @@ function expensesCard(groupId, allExpenses, profileOf, reload, onEdit) {
     details.addEventListener('toggle', () => {
       if (details.open) groupUi.openExpenses.add(e.id);
       else groupUi.openExpenses.delete(e.id);
+      // Розгорнув (або відкрив за посиланням з Telegram) — позначаємо, що бачив; оновлюємо блок і лічильник на місці.
+      if (!details.open) return;
+      if (!e.views.some((v) => v.userId === currentUser.id)) {
+        e.views.push({ userId: currentUser.id, viewedAt: new Date().toISOString() });
+        supabase.rpc('mark_expense_viewed', { eid: e.id }).then(({ error }) => {
+          if (error) console.warn('Не вдалося позначити перегляд:', error.message);
+        });
+      }
+      details.querySelector('.expense-views')?.replaceWith(expenseViewsField(e, profileOf, members));
+      const tag = details.querySelector('.tag-views');
+      const meta = details.querySelector('.expense-meta');
+      if (tag) tag.replaceWith(expenseViewsTag(e, members));
+      else if (meta) meta.append(expenseViewsTag(e, members));
     });
     return h('li', { id: `expense-${e.id}` }, details);
   };
