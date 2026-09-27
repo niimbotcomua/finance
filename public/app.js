@@ -141,6 +141,7 @@ const categoryLabel = (c) => (c.icon ? `${c.icon} ${c.name}` : c.name);
 
 /** Замінює вміст #app, пропускаючи порожні (null/false) вузли. */
 function mount(...nodes) {
+  document.body.classList.remove('auth-page');
   app.replaceChildren(...nodes.filter((n) => n !== null && n !== undefined && n !== false));
 }
 
@@ -1009,6 +1010,22 @@ function brandingSettingsCard(meta) {
 
 // ---------- Вхід / реєстрація ----------
 
+/** Ліва половина сторінки входу: заголовок і Ділюша, що ділить гроші порівну (public/img/dilyusha.svg). */
+function authHero() {
+  return h('section', { class: 'auth-hero' },
+    h('div', { class: 'auth-hero-text' },
+      h('p', { class: 'auth-kicker' }, 'Спільні витрати'),
+      h('h2', {}, 'Рахуйте разом.', h('br'), 'Діліть чесно.'),
+      h('p', {}, 'Поїздки, квартира, вечірки — додавайте витрати, а Ділюша порахує, хто кому скільки винен.')),
+    h('img', { class: 'auth-hero-art', src: '/img/dilyusha.svg', alt: 'Ділюша ділить гроші порівну', width: 400, height: 400 }));
+}
+
+/** Сторінка входу на два екрани: ліворуч — ілюстрація, праворуч — форма (на телефоні — одна під одною). */
+function mountAuth(card) {
+  mount(h('div', { class: 'auth-layout' }, authHero(), h('div', { class: 'auth-side' }, card)));
+  document.body.classList.add('auth-page');
+}
+
 /** Запит листа для відновлення пароля. */
 function renderForgotPassword(email = '') {
   const error = h('div', { class: 'error' });
@@ -1020,7 +1037,7 @@ function renderForgotPassword(email = '') {
   form.addEventListener('submit', submitHandler(form, error, async (data) => {
     const address = String(data.get('email')).trim();
     await run(supabase.auth.resetPasswordForEmail(address, { redirectTo: `${location.origin}${location.pathname}` }));
-    mount(
+    mountAuth(
       h('div', { class: 'card auth' },
         h('h1', {}, 'Перевірте пошту'),
         h('p', {}, `Якщо акаунт з адресою ${address} існує, ми надіслали на неї лист. Перейдіть за посиланням у ньому, щоб створити новий пароль.`),
@@ -1028,7 +1045,7 @@ function renderForgotPassword(email = '') {
       ),
     );
   }));
-  mount(
+  mountAuth(
     h('div', { class: 'card auth' },
       h('h1', {}, 'Відновлення пароля'),
       h('p', { class: 'sub' }, 'Вкажіть email, з яким ви реєструвалися, — надішлемо посилання для створення нового пароля.'),
@@ -1124,7 +1141,7 @@ function renderAuth(invite = null) {
         options: { data: { name: String(data.get('name')).trim() }, emailRedirectTo: location.origin },
       }));
       if (!result.session) {
-        mount(
+        mountAuth(
           h('div', { class: 'card auth' },
             h('h1', {}, 'Перевірте пошту'),
             h('p', {}, `Ми надіслали лист на ${email}. Перейдіть за посиланням у ньому, щоб підтвердити реєстрацію, а потім увійдіть.`),
@@ -1160,7 +1177,7 @@ function renderAuth(invite = null) {
   }, googleIcon(), 'Продовжити з Google');
 
   setMode(mode);
-  mount(
+  mountAuth(
     h('div', { class: 'card auth' },
       h('h1', {}, 'Ласкаво просимо'),
       invite

@@ -9,6 +9,7 @@
   --accent: #ff4f6d;
   --accent-2: #ff8a4c;
   --accent-grad: linear-gradient(135deg, #ff4f6d 0%, #ff8a4c 100%);
+  --hero-bg: linear-gradient(160deg, #ff4f6d 0%, #ff8a4c 100%);
   --accent-text: #ffffff;
   --positive: #3ddc84;
   --negative: #ff5c5c;
@@ -749,3 +750,34 @@ html[data-design="nova"] .menu-item.danger { color: var(--negative); }
 .design-preview-dark { background: #0d0d0f; }
 .design-preview-dark i { background: #1c1c20; }
 .design-preview-dark i:first-child { background: linear-gradient(135deg, #ff4f6d, #ff8a4c); }
+
+/* Сторінка входу на два екрани: ліворуч — кольорова панель з Ділюшею, праворуч — форма */
+body.auth-page main { max-width: none; padding: 0; }
+.auth-layout {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  min-height: calc(100vh - 61px); min-height: calc(100dvh - 61px);
+}
+.auth-hero {
+  position: relative; overflow: hidden; color: #fff;
+  display: flex; flex-direction: column; justify-content: center; gap: 28px;
+  padding: 48px clamp(24px, 6vw, 96px);
+  background:
+    radial-gradient(circle at 96% 4%, rgb(255 255 255 / 0.14) 0 110px, transparent 111px),
+    radial-gradient(circle at 8% 92%, rgb(255 255 255 / 0.1) 0 140px, transparent 141px),
+    var(--hero-bg);
+}
+.auth-kicker { margin: 0 0 12px; font-size: 13px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.85; }
+.auth-hero-text h2 { margin: 0 0 14px; font-size: clamp(32px, 3.6vw, 52px); line-height: 1.08; font-weight: 900; letter-spacing: -0.02em; color: #fff; }
+.auth-hero-text p:last-child { margin: 0; max-width: 30em; font-size: 17px; line-height: 1.5; opacity: 0.92; }
+.auth-hero-art { display: block; width: min(100%, 440px); height: auto; align-self: center; }
+.auth-side { display: flex; align-items: center; justify-content: center; padding: 40px 24px; }
+.auth-side .auth { width: 100%; margin: 0; }
+@media (max-width: 860px) {
+  .auth-layout { grid-template-columns: 1fr; min-height: 0; }
+  .auth-hero { flex-direction: row; align-items: flex-end; gap: 8px; padding: 24px 16px 0; }
+  .auth-hero-text { flex: 1; min-width: 0; padding-bottom: 24px; }
+  .auth-hero-text h2 { font-size: 26px; }
+  .auth-hero-text p:last-child, .auth-kicker { display: none; }
+  .auth-hero-art { width: 150px; flex: none; align-self: flex-end; margin-bottom: -6px; }
+  .auth-side { padding: 20px 16px 40px; }
+}
