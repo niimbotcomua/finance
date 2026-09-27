@@ -585,7 +585,11 @@ test('Telegram: прив\'язка через бота і сповіщення �
     + `📅 ${today}\n\n<blockquote>🫵 Ваша частка: <b>617,28 грн</b></blockquote>\n`
     + '🔴 Ваш баланс у групі: <b>−617,28 грн</b> — ви винні');
   assert.equal(sent[0].body.parse_mode, 'HTML');
-  assert.deepEqual(sent[0].body.reply_markup, { inline_keyboard: [[{ text: '📂 Відкрити групу', url: `https://finance.chinnect24.com/#/groups/${gid}` }]] });
+  const [{ id: eid }] = (await db.query('select id from public.expenses where group_id = $1', [gid])).rows;
+  assert.deepEqual(sent[0].body.reply_markup, { inline_keyboard: [[
+    { text: '🧾 Відкрити витрату', url: `https://finance.chinnect24.com/#/groups/${gid}/expenses/${eid}` },
+    { text: '📂 Група', url: `https://finance.chinnect24.com/#/groups/${gid}` },
+  ]] });
 
   // /stop і кнопка «Відключити» вимикають сповіщення.
   assert.match((await webhook(secret, '/stop')).text, /вимкнено/);
