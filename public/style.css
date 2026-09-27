@@ -771,6 +771,8 @@ body.auth-page main { max-width: none; padding: 0; }
 .auth-hero-text p:last-child { margin: 0; max-width: 30em; font-size: 17px; line-height: 1.5; opacity: 0.92; }
 .auth-hero picture { display: block; width: min(100%, 600px); align-self: center; }
 .auth-hero-art { display: block; width: 100%; height: auto; }
+/* Місто в сцені плавно розчиняється по боках, а не обривається краєм картинки */
+.auth-hero-art { -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent); mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent); }
 .auth-side { display: flex; align-items: center; justify-content: center; padding: 40px 24px; }
 .auth-side .auth { width: 100%; margin: 0; }
 @media (max-width: 860px) {

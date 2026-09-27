@@ -1,0 +1,372 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 240" role="img" aria-label="Хлопець іде й думає про витрати: падел, кава, кальян — а гроші витрачаються">
+  <!-- Анімована сцена для сторінки входу: хлопець іде зліва направо, у хмаринці по черзі витрати
+       (падел → кава → кальян), до хмаринки летить купюра, спливає ціна, лічильник «Витрачено» росте.
+       Широка версія для телефона. Цикл 12 с; лише CSS, тож працює і в <img>. Варіант із хлопцем замість Ділюші. -->
+    <defs>
+    <linearGradient id="iris" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2a1f4f"/>
+      <stop offset="1" stop-color="#7b5cd6"/>
+    </linearGradient>
+    <linearGradient id="hoodie" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffd166"/>
+      <stop offset="1" stop-color="#ffb938"/>
+    </linearGradient>
+    <g id="wing">
+      <rect x="-128" y="-15" width="140" height="30" rx="15" fill="#ffffff" transform="rotate(38)"/>
+      <rect x="-108" y="-15" width="120" height="30" rx="15" fill="#ffe1dc" transform="rotate(16)"/>
+      <rect x="-86" y="-15" width="98" height="30" rx="15" fill="#ffc2b8" transform="rotate(-6)"/>
+    </g>
+    <!-- Купюра (як у логотипі), центр у 0,0: 224×132 -->
+    <g id="note">
+      <rect x="-112" y="-66" width="224" height="132" rx="18" fill="#ffffff" stroke="#b81d12" stroke-width="8"/>
+      <rect x="-94" y="-48" width="188" height="96" rx="8" fill="none" stroke="#da291c" stroke-width="6" stroke-dasharray="2 11" stroke-linecap="round" opacity=".5"/>
+      <circle r="40" fill="#da291c"/>
+      <path d="M-15 -17 C-8 -30 20 -28 18 -11 C16 2 -18 2 -19 17 C-20 32 8 33 19 21" fill="none" stroke="#fff" stroke-width="10" stroke-linecap="round"/>
+      <path d="M-26 -3 H26 M-26 10 H26" stroke="#fff" stroke-width="7" stroke-linecap="round"/>
+    </g>
+    <g id="flying">
+      <use href="#wing" transform="translate(-100 -20)"/>
+      <use href="#wing" transform="translate(100 -20) scale(-1 1)"/>
+      <use href="#note"/>
+    </g>
+  </defs>
+  <style>
+    .walker { animation: walk 12s linear infinite; }
+    .bob { animation: bob .5s ease-in-out infinite alternate; }
+    .legL { transform-origin: 186px 296px; animation: step .5s ease-in-out infinite alternate; }
+    .legR { transform-origin: 214px 296px; animation: step .5s ease-in-out infinite alternate-reverse; }
+    .armL { transform-origin: 166px 214px; animation: swing .5s ease-in-out infinite alternate-reverse; }
+    .armR { transform-origin: 234px 214px; animation: swing .5s ease-in-out infinite alternate; }
+    .eye { transform-box: fill-box; transform-origin: center; animation: blink 4.2s infinite; }
+    #ahoge { transform-origin: 204px 94px; animation: sway 1s ease-in-out infinite alternate; }
+    #clip { transform-box: fill-box; transform-origin: center; }
+    .slot { opacity: 0; transform-box: fill-box; transform-origin: center; animation: slot 12s infinite both; }
+    .tag { opacity: 0; transform-box: fill-box; transform-origin: center; animation: tag 12s infinite both; }
+    .s2 { animation-delay: -8s; }
+    .s3 { animation-delay: -4s; }
+    .cash { opacity: 0; animation: cash 4s ease-in infinite; }
+    .shadow { animation: shadow .5s ease-in-out infinite alternate; transform-box: fill-box; transform-origin: center; }
+    @keyframes walk { 0% { transform: translate(64px, 0); opacity: 0; } 3% { opacity: 1; } 96% { opacity: 1; } 100% { transform: translate(330px, 0); opacity: 0; } }
+    @keyframes bob { from { transform: translateY(0); } to { transform: translateY(-5px); } }
+    @keyframes step { from { transform: rotate(-14deg); } to { transform: rotate(14deg); } }
+    @keyframes swing { from { transform: rotate(-16deg); } to { transform: rotate(16deg); } }
+    @keyframes blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(.08); } }
+    @keyframes sway { from { transform: rotate(-8deg); } to { transform: rotate(8deg); } }
+    @keyframes shadow { from { transform: scaleX(1); } to { transform: scaleX(.9); } }
+    @keyframes slot { 0% { opacity: 0; transform: scale(.5); } 3% { opacity: 1; transform: scale(1.12); } 6% { transform: scale(1); } 30% { opacity: 1; transform: scale(1); } 33.3%, 100% { opacity: 0; transform: scale(.8); } }
+    @keyframes tag { 0%, 9% { opacity: 0; transform: translateY(10px) scale(.6); } 12% { opacity: 1; transform: translateY(0) scale(1.1); } 15%, 29% { opacity: 1; transform: translateY(0) scale(1); } 33.3%, 100% { opacity: 0; transform: translateY(-14px) scale(1); } }
+    @keyframes cash { 0% { opacity: 0; transform: translate(0, 0) scale(1) rotate(0); } 6% { opacity: 1; } 30% { opacity: 1; transform: translate(100px, -110px) scale(.6) rotate(-20deg); } 38%, 100% { opacity: 0; transform: translate(108px, -122px) scale(.3) rotate(-25deg); } }
+    @media (prefers-reduced-motion: reduce) {
+      * { animation: none !important; }
+      .walker { transform: translate(200px, 0); }
+      .s1 { opacity: 1; }
+    }
+    .twinkle { animation: twinkle 3.2s ease-in-out infinite; }
+    .lamp { filter: drop-shadow(0 0 4px #ffe8a3); }
+    .skycloud { animation: drift 27s linear infinite; }
+    @keyframes twinkle { 0%, 100% { opacity: .55; } 50% { opacity: .15; } }
+    @keyframes drift { from { transform: translateX(0); } to { transform: translateX(-720px); } }
+  </style>
+
+  <!-- Місто позаду -->
+  <g id="city">
+    <g class="skycloud" style="animation-delay:0s"><g transform="translate(120 22) scale(0.55)" fill="#fff" opacity=".13"><ellipse cx="0" cy="0" rx="46" ry="16"/><ellipse cx="-20" cy="-10" rx="22" ry="16"/><ellipse cx="16" cy="-14" rx="26" ry="20"/></g></g>
+    <g class="skycloud" style="animation-delay:-9s"><g transform="translate(420 40) scale(0.44)" fill="#fff" opacity=".13"><ellipse cx="0" cy="0" rx="46" ry="16"/><ellipse cx="-20" cy="-10" rx="22" ry="16"/><ellipse cx="16" cy="-14" rx="26" ry="20"/></g></g>
+    <g class="skycloud" style="animation-delay:-18s"><g transform="translate(620 16) scale(0.50)" fill="#fff" opacity=".13"><ellipse cx="0" cy="0" rx="46" ry="16"/><ellipse cx="-20" cy="-10" rx="22" ry="16"/><ellipse cx="16" cy="-14" rx="26" ry="20"/></g></g>
+    <rect x="-10" y="139" width="44" height="93" fill="#fff" opacity=".07"/>
+    <rect x="36" y="92" width="36" height="140" fill="#fff" opacity=".07"/>
+    <rect x="79" y="146" width="52" height="86" fill="#fff" opacity=".07"/>
+    <rect x="136" y="143" width="35" height="89" fill="#fff" opacity=".07"/>
+    <rect x="174" y="143" width="41" height="89" fill="#fff" opacity=".07"/>
+    <rect x="217" y="110" width="60" height="122" fill="#fff" opacity=".07"/>
+    <rect x="245.5" y="97" width="3" height="13" fill="#fff" opacity=".07"/>
+    <rect x="282" y="105" width="54" height="127" fill="#fff" opacity=".07"/>
+    <rect x="338" y="109" width="52" height="123" fill="#fff" opacity=".07"/>
+    <rect x="395" y="110" width="35" height="122" fill="#fff" opacity=".07"/>
+    <rect x="436" y="140" width="47" height="92" fill="#fff" opacity=".07"/>
+    <rect x="489" y="92" width="51" height="140" fill="#fff" opacity=".07"/>
+    <rect x="543" y="109" width="52" height="123" fill="#fff" opacity=".07"/>
+    <rect x="-6" y="144" width="52" height="88" rx="2" fill="#000" opacity=".11"/>
+    <rect x="-1.1" y="150" width="7.6" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="16.2" y="150" width="7.6" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="33.5" y="150" width="7.6" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="-1.1" y="165" width="7.6" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="16.2" y="165" width="7.6" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="33.5" y="165" width="7.6" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="-1.1" y="181" width="7.6" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="16.2" y="181" width="7.6" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="33.5" y="181" width="7.6" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="-1.1" y="197" width="7.6" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="16.2" y="197" width="7.6" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="33.5" y="197" width="7.6" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect class="twinkle" style="animation-delay:-1.8s" x="-1.1" y="213" width="7.6" height="6.9" rx="1" fill="#ffd166" opacity=".55"/>
+    <rect x="16.2" y="213" width="7.6" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="33.5" y="213" width="7.6" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="57" y="140" width="64" height="92" rx="2" fill="#000" opacity=".11"/>
+    <rect x="61.5" y="146" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect class="twinkle" style="animation-delay:-2.5s" x="77.5" y="146" width="7.0" height="6.9" rx="1" fill="#ffd166" opacity=".55"/>
+    <rect x="93.5" y="146" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect class="twinkle" style="animation-delay:-2.9s" x="109.5" y="146" width="7.0" height="6.9" rx="1" fill="#ffd166" opacity=".55"/>
+    <rect class="twinkle" style="animation-delay:-4.0s" x="61.5" y="162" width="7.0" height="6.9" rx="1" fill="#ffd166" opacity=".55"/>
+    <rect x="77.5" y="162" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="93.5" y="162" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="109.5" y="162" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="61.5" y="177" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="77.5" y="177" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="93.5" y="177" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="109.5" y="177" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="61.5" y="193" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="77.5" y="193" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="93.5" y="193" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="109.5" y="193" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="61.5" y="209" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect class="twinkle" style="animation-delay:-4.2s" x="77.5" y="209" width="7.0" height="6.9" rx="1" fill="#ffd166" opacity=".55"/>
+    <rect x="93.5" y="209" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="109.5" y="209" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="132" y="132" width="64" height="100" rx="2" fill="#000" opacity=".11"/>
+    <rect x="136.5" y="138" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="152.5" y="138" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect class="twinkle" style="animation-delay:-2.8s" x="168.5" y="138" width="7.0" height="6.9" rx="1" fill="#ffd166" opacity=".55"/>
+    <rect x="184.5" y="138" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect class="twinkle" style="animation-delay:-0.4s" x="136.5" y="154" width="7.0" height="6.9" rx="1" fill="#ffd166" opacity=".55"/>
+    <rect x="152.5" y="154" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect class="twinkle" style="animation-delay:-1.5s" x="168.5" y="154" width="7.0" height="6.9" rx="1" fill="#ffd166" opacity=".55"/>
+    <rect x="184.5" y="154" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="136.5" y="170" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect class="twinkle" style="animation-delay:-2.7s" x="152.5" y="170" width="7.0" height="6.9" rx="1" fill="#ffd166" opacity=".55"/>
+    <rect x="168.5" y="170" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="184.5" y="170" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="136.5" y="186" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="152.5" y="186" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="168.5" y="186" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="184.5" y="186" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="136.5" y="202" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="152.5" y="202" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="168.5" y="202" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect class="twinkle" style="animation-delay:-1.1s" x="184.5" y="202" width="7.0" height="6.9" rx="1" fill="#ffd166" opacity=".55"/>
+    <rect x="136.5" y="217" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="152.5" y="217" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="168.5" y="217" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="184.5" y="217" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="204" y="182" width="64" height="50" rx="2" fill="#000" opacity=".11"/>
+    <rect class="twinkle" style="animation-delay:-3.2s" x="208.5" y="188" width="7.0" height="6.9" rx="1" fill="#ffd166" opacity=".55"/>
+    <rect x="224.5" y="188" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="240.5" y="188" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect class="twinkle" style="animation-delay:-5.2s" x="256.5" y="188" width="7.0" height="6.9" rx="1" fill="#ffd166" opacity=".55"/>
+    <rect x="208.5" y="204" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="224.5" y="204" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="240.5" y="204" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="256.5" y="204" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="208.5" y="220" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="224.5" y="220" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="240.5" y="220" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="256.5" y="220" width="7.0" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="278" y="155" width="71" height="77" rx="2" fill="#000" opacity=".11"/>
+    <rect class="twinkle" style="animation-delay:-3.8s" x="282.0" y="160" width="6.2" height="6.9" rx="1" fill="#ffd166" opacity=".55"/>
+    <rect class="twinkle" style="animation-delay:-0.4s" x="296.2" y="160" width="6.2" height="6.9" rx="1" fill="#ffd166" opacity=".55"/>
+    <rect x="310.4" y="160" width="6.2" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="324.6" y="160" width="6.2" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="338.8" y="160" width="6.2" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect class="twinkle" style="animation-delay:-0.0s" x="282.0" y="176" width="6.2" height="6.9" rx="1" fill="#ffd166" opacity=".55"/>
+    <rect class="twinkle" style="animation-delay:-0.6s" x="296.2" y="176" width="6.2" height="6.9" rx="1" fill="#ffd166" opacity=".55"/>
+    <rect x="310.4" y="176" width="6.2" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect class="twinkle" style="animation-delay:-5.2s" x="324.6" y="176" width="6.2" height="6.9" rx="1" fill="#ffd166" opacity=".55"/>
+    <rect x="338.8" y="176" width="6.2" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect class="twinkle" style="animation-delay:-1.5s" x="282.0" y="192" width="6.2" height="6.9" rx="1" fill="#ffd166" opacity=".55"/>
+    <rect x="296.2" y="192" width="6.2" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="310.4" y="192" width="6.2" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect class="twinkle" style="animation-delay:-5.1s" x="324.6" y="192" width="6.2" height="6.9" rx="1" fill="#ffd166" opacity=".55"/>
+    <rect x="338.8" y="192" width="6.2" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="282.0" y="208" width="6.2" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="296.2" y="208" width="6.2" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect class="twinkle" style="animation-delay:-0.6s" x="310.4" y="208" width="6.2" height="6.9" rx="1" fill="#ffd166" opacity=".55"/>
+    <rect x="324.6" y="208" width="6.2" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="338.8" y="208" width="6.2" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="364" y="146" width="56" height="86" rx="2" fill="#000" opacity=".11"/>
+    <rect class="twinkle" style="animation-delay:-5.7s" x="367.9" y="152" width="6.2" height="6.9" rx="1" fill="#ffd166" opacity=".55"/>
+    <rect x="381.9" y="152" width="6.2" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect class="twinkle" style="animation-delay:-3.3s" x="395.9" y="152" width="6.2" height="6.9" rx="1" fill="#ffd166" opacity=".55"/>
+    <rect class="twinkle" style="animation-delay:-3.2s" x="409.9" y="152" width="6.2" height="6.9" rx="1" fill="#ffd166" opacity=".55"/>
+    <rect x="367.9" y="168" width="6.2" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="381.9" y="168" width="6.2" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="395.9" y="168" width="6.2" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="409.9" y="168" width="6.2" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="367.9" y="184" width="6.2" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="381.9" y="184" width="6.2" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="395.9" y="184" width="6.2" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="409.9" y="184" width="6.2" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="367.9" y="199" width="6.2" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="381.9" y="199" width="6.2" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="395.9" y="199" width="6.2" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="409.9" y="199" width="6.2" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="367.9" y="215" width="6.2" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="381.9" y="215" width="6.2" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="395.9" y="215" width="6.2" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="409.9" y="215" width="6.2" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="435" y="169" width="60" height="63" rx="2" fill="#000" opacity=".11"/>
+    <rect x="439.2" y="174" width="6.6" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="454.2" y="174" width="6.6" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect class="twinkle" style="animation-delay:-0.2s" x="469.2" y="174" width="6.6" height="6.9" rx="1" fill="#ffd166" opacity=".55"/>
+    <rect x="484.2" y="174" width="6.6" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="439.2" y="190" width="6.6" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="454.2" y="190" width="6.6" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="469.2" y="190" width="6.6" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="484.2" y="190" width="6.6" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="439.2" y="206" width="6.6" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="454.2" y="206" width="6.6" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="469.2" y="206" width="6.6" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="484.2" y="206" width="6.6" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="439.2" y="222" width="6.6" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="454.2" y="222" width="6.6" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="469.2" y="222" width="6.6" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="484.2" y="222" width="6.6" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="508" y="149" width="46" height="83" rx="2" fill="#000" opacity=".11"/>
+    <rect x="512.3" y="154" width="6.7" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="527.6" y="154" width="6.7" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="543.0" y="154" width="6.7" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="512.3" y="170" width="6.7" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect class="twinkle" style="animation-delay:-2.3s" x="527.6" y="170" width="6.7" height="6.9" rx="1" fill="#ffd166" opacity=".55"/>
+    <rect x="543.0" y="170" width="6.7" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="512.3" y="186" width="6.7" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="527.6" y="186" width="6.7" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="543.0" y="186" width="6.7" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="512.3" y="202" width="6.7" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect class="twinkle" style="animation-delay:-5.7s" x="527.6" y="202" width="6.7" height="6.9" rx="1" fill="#ffd166" opacity=".55"/>
+    <rect x="543.0" y="202" width="6.7" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="512.3" y="218" width="6.7" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="527.6" y="218" width="6.7" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect class="twinkle" style="animation-delay:-1.0s" x="543.0" y="218" width="6.7" height="6.9" rx="1" fill="#ffd166" opacity=".55"/>
+    <rect x="560" y="172" width="47" height="60" rx="2" fill="#000" opacity=".11"/>
+    <rect x="564.4" y="178" width="6.9" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="580.1" y="178" width="6.9" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="595.7" y="178" width="6.9" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="564.4" y="193" width="6.9" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="580.1" y="193" width="6.9" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="595.7" y="193" width="6.9" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect x="564.4" y="209" width="6.9" height="6.9" rx="1" fill="#fff" opacity=".12"/>
+    <rect class="twinkle" style="animation-delay:-3.3s" x="580.1" y="209" width="6.9" height="6.9" rx="1" fill="#ffd166" opacity=".55"/>
+    <rect class="twinkle" style="animation-delay:-4.8s" x="595.7" y="209" width="6.9" height="6.9" rx="1" fill="#ffd166" opacity=".55"/>
+    <rect x="0" y="232" width="600" height="60" fill="#000" opacity=".16"/>
+    <rect x="0" y="232" width="600" height="3" fill="#fff" opacity=".18"/>
+    <g opacity=".22"><rect x="37" y="207" width="6" height="25" fill="#000"/><circle cx="40" cy="202" r="11" fill="#000"/><circle cx="33" cy="208" r="7" fill="#000"/><circle cx="47" cy="207" r="8" fill="#000"/></g>
+    <g><rect x="188" y="189" width="4" height="43" fill="#000" opacity=".25"/><path d="M190 189 q10 -6 18 0" fill="none" stroke="#000" stroke-width="4" opacity=".25"/><circle class="lamp" cx="208" cy="191" r="3.8" fill="#ffe8a3"/></g>
+    <g opacity=".22"><rect x="337" y="207" width="6" height="25" fill="#000"/><circle cx="340" cy="202" r="11" fill="#000"/><circle cx="333" cy="208" r="7" fill="#000"/><circle cx="347" cy="207" r="8" fill="#000"/></g>
+    <g><rect x="488" y="189" width="4" height="43" fill="#000" opacity=".25"/><path d="M490 189 q10 -6 18 0" fill="none" stroke="#000" stroke-width="4" opacity=".25"/><circle class="lamp" cx="508" cy="191" r="3.8" fill="#ffe8a3"/></g>
+  </g>
+
+  <!-- Лічильник витрат -->
+  <text x="580" y="160" text-anchor="end" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="18" font-weight="800" fill="#fff" opacity=".85" letter-spacing="1">ВИТРАЧЕНО</text>
+  <text class="slot s1" x="580" y="194" text-anchor="end" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="29" font-weight="900" fill="#fff">350 ₴</text>
+  <text class="slot s2" x="580" y="194" text-anchor="end" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="29" font-weight="900" fill="#fff">440 ₴</text>
+  <text class="slot s3" x="580" y="194" text-anchor="end" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="29" font-weight="900" fill="#fff">1 040 ₴</text>
+
+  <g class="walker">
+    <!-- Тінь -->
+    <ellipse class="shadow" cx="0" cy="232" rx="40" ry="6" fill="#000" opacity=".16"/>
+
+    <!-- Хмаринка-думка з витратами -->
+    <circle cx="46" cy="118" r="5" fill="#fff"/>
+    <circle cx="64" cy="104" r="7" fill="#fff"/>
+    <g transform="translate(150 84) scale(.72)">
+      <path d="M-62 48 Q-92 44 -88 14 Q-100 -20 -64 -28 Q-58 -66 -18 -60 Q6 -86 40 -62 Q80 -70 84 -32 Q112 -18 96 16 Q100 50 62 50 Q40 70 6 56 Q-30 72 -62 48 Z" fill="#fff"/>
+
+    <!-- 1. Падел: ракетка й м'ячик -->
+    <g class="slot s1">
+      <g transform="translate(-4 -8) rotate(-28)">
+        <rect x="-5" y="12" width="10" height="30" rx="4" fill="#2b2446"/>
+        <rect x="-6" y="30" width="12" height="4" rx="2" fill="#da291c"/>
+        <ellipse cy="-10" rx="25" ry="29" fill="#1f6feb"/>
+        <ellipse cy="-10" rx="25" ry="29" fill="none" stroke="#0b3d91" stroke-width="4"/>
+        <g fill="#8fb8ff"><circle cx="-9" cy="-22" r="3"/><circle cx="0" cy="-22" r="3"/><circle cx="9" cy="-22" r="3"/><circle cx="-13" cy="-12" r="3"/><circle cx="-4" cy="-12" r="3"/><circle cx="5" cy="-12" r="3"/><circle cx="14" cy="-12" r="3"/><circle cx="-9" cy="-2" r="3"/><circle cx="0" cy="-2" r="3"/><circle cx="9" cy="-2" r="3"/></g>
+      </g>
+      <circle cx="30" cy="10" r="8" fill="#d8f23a" stroke="#a9c21a" stroke-width="2"/>
+      <text y="44" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="14" font-weight="800" fill="#2b2446">Падел</text>
+    </g>
+    <!-- 2. Кава -->
+    <g class="slot s2">
+      <path d="M-8 -30 Q-14 -38 -8 -46 M4 -30 Q-2 -38 4 -46" fill="none" stroke="#b9b3c9" stroke-width="3.5" stroke-linecap="round"/>
+      <path d="M-20 -24 H20 L15 26 Q14 30 10 30 H-10 Q-14 30 -15 26 Z" fill="#f4e3c9"/>
+      <rect x="-23" y="-28" width="46" height="8" rx="4" fill="#5b3a1e"/>
+      <path d="M-18 -4 H18 L16 12 H-16 Z" fill="#8b5a2b"/>
+      <circle cx="0" cy="4" r="4" fill="#f4e3c9"/>
+      <text y="44" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="14" font-weight="800" fill="#2b2446">Кава</text>
+    </g>
+    <!-- 3. Кальян -->
+    <g class="slot s3">
+      <circle cx="-14" cy="-44" r="5" fill="#d9d4e6"/><circle cx="-22" cy="-52" r="4" fill="#e6e2ef"/>
+      <path d="M-8 -34 H8 L5 -26 H-5 Z" fill="#b5651d"/>
+      <circle cx="-3" cy="-36" r="2" fill="#ff5a36"/><circle cx="3" cy="-36" r="2" fill="#ff5a36"/>
+      <rect x="-14" y="-26" width="28" height="4" rx="2" fill="#c9a227"/>
+      <rect x="-3" y="-22" width="6" height="24" fill="#c9a227"/>
+      <path d="M-16 2 Q-24 16 -14 28 H14 Q24 16 16 2 Z" fill="#8e6bf0"/>
+      <path d="M-10 8 Q-14 16 -8 22" fill="none" stroke="#c9b8ff" stroke-width="3" stroke-linecap="round"/>
+      <path d="M3 -10 Q30 -8 28 14 Q27 26 34 30" fill="none" stroke="#2b2446" stroke-width="3" stroke-linecap="round"/>
+      <rect x="31" y="28" width="6" height="8" rx="2" fill="#c9a227"/>
+      <text y="44" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="14" font-weight="800" fill="#2b2446">Кальян</text>
+    </g>
+    </g>
+    <!-- Ціна купівлі -->
+    <g transform="translate(222 44) scale(.85)">
+    <g class="tag s1"><rect x="-44" y="-17" width="88" height="34" rx="17" fill="#2b2446"/>
+      <text y="7" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="18" font-weight="800" fill="#ffd166">−350 ₴</text></g>
+    <g class="tag s2"><rect x="-44" y="-17" width="88" height="34" rx="17" fill="#2b2446"/>
+      <text y="7" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="18" font-weight="800" fill="#ffd166">−90 ₴</text></g>
+    <g class="tag s3"><rect x="-44" y="-17" width="88" height="34" rx="17" fill="#2b2446"/>
+      <text y="7" text-anchor="middle" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif" font-size="18" font-weight="800" fill="#ffd166">−600 ₴</text></g>
+    </g>
+
+    <!-- Хлопець (масштаб 0,6; центр — x = 0, ноги на y ≈ 400) -->
+    <g transform="translate(-84 77) scale(.42)">
+      <g class="bob">
+        <!-- Ноги -->
+        <g class="legL"><rect x="178" y="292" width="17" height="78" rx="8" fill="#2d3a5c"/><ellipse cx="184" cy="370" rx="16" ry="8" fill="#ffffff"/></g>
+        <g class="legR"><rect x="205" y="292" width="17" height="78" rx="8" fill="#2d3a5c"/><ellipse cx="216" cy="370" rx="16" ry="8" fill="#ffffff"/></g>
+        <!-- Ліва рука -->
+        <g class="armL"><path d="M166 214 Q148 252 152 288" fill="none" stroke="#2f6db5" stroke-width="16" stroke-linecap="round"/><circle cx="152" cy="293" r="9" fill="#f1c9a5"/></g>
+        <!-- Куртка поверх білої футболки -->
+        <path d="M168 204 Q200 196 232 204 Q244 208 244 222 L240 300 Q240 306 234 306 H166 Q160 306 160 300 L156 222 Q156 208 168 204 Z" fill="#2f6db5"/>
+        <path d="M184 202 L200 252 L216 202 Z" fill="#ffffff"/>
+        <path d="M200 252 V304" stroke="#245a96" stroke-width="3"/>
+        <path d="M168 204 L186 202 L196 234 Z M232 204 L214 202 L204 234 Z" fill="#3c7fcb"/>
+        <rect x="160" y="296" width="80" height="9" rx="3" fill="#1f2a44"/>
+        <!-- Права рука з гаманцем -->
+        <g class="armR">
+          <path d="M234 214 Q252 252 248 288" fill="none" stroke="#2f6db5" stroke-width="16" stroke-linecap="round"/>
+          <rect x="236" y="284" width="36" height="25" rx="5" fill="#da291c"/><rect x="236" y="284" width="36" height="9" rx="4" fill="#b81d12"/><circle cx="265" cy="297" r="2.6" fill="#ffd166"/>
+          <circle cx="248" cy="293" r="9" fill="#f1c9a5"/>
+        </g>
+        <!-- Шия, вуха, обличчя -->
+        <rect x="191" y="176" width="18" height="30" rx="7" fill="#e8b890"/>
+        <ellipse cx="155" cy="138" rx="7" ry="11" fill="#f1c9a5"/><ellipse cx="245" cy="138" rx="7" ry="11" fill="#f1c9a5"/>
+        <path d="M154 120 Q152 176 200 188 Q248 176 246 120 Q246 78 200 78 Q154 78 154 120 Z" fill="#f6d2b3"/>
+        <!-- Очі -->
+        <g class="eye">
+          <ellipse cx="181" cy="138" rx="11" ry="12" fill="#ffffff"/>
+          <ellipse cx="182" cy="140" rx="8" ry="10" fill="#6b4226"/>
+          <ellipse cx="182" cy="141" rx="4" ry="6" fill="#241510"/>
+          <circle cx="178" cy="135" r="3.5" fill="#ffffff"/>
+          <path d="M169 134 Q181 123 194 131" fill="none" stroke="#2b1a12" stroke-width="4" stroke-linecap="round"/>
+        </g>
+        <g class="eye">
+          <ellipse cx="219" cy="138" rx="11" ry="12" fill="#ffffff"/>
+          <ellipse cx="218" cy="140" rx="8" ry="10" fill="#6b4226"/>
+          <ellipse cx="218" cy="141" rx="4" ry="6" fill="#241510"/>
+          <circle cx="214" cy="135" r="3.5" fill="#ffffff"/>
+          <path d="M206 131 Q219 123 231 134" fill="none" stroke="#2b1a12" stroke-width="4" stroke-linecap="round"/>
+        </g>
+        <path d="M168 119 Q180 110 193 115 M207 115 Q220 110 232 119" fill="none" stroke="#3b2a20" stroke-width="5" stroke-linecap="round"/>
+        <path d="M200 146 Q196 156 203 158" fill="none" stroke="#d9a07a" stroke-width="3" stroke-linecap="round"/>
+        <path d="M186 168 Q200 180 214 168" fill="none" stroke="#8a3b2b" stroke-width="4" stroke-linecap="round"/>
+        <ellipse cx="166" cy="158" rx="9" ry="5" fill="#ff8a95" opacity=".3"/><ellipse cx="234" cy="158" rx="9" ry="5" fill="#ff8a95" opacity=".3"/>
+        <!-- Зачіска: чубчик набік і пасма вгору -->
+        <path d="M150 128 Q144 70 200 62 Q258 66 252 128 L246 104 Q230 90 204 92 L186 110 L176 96 L164 112 Z" fill="#3b2a20"/>
+        <path d="M156 104 Q162 58 214 52 Q250 56 252 96 L240 84 L232 98 L222 78 L210 94 L200 74 L190 92 L178 78 L170 96 Z" fill="#4a3426"/>
+        <path d="M168 70 L174 40 L190 62 L202 32 L214 58 L234 42 L232 70 Z" fill="#4a3426"/>
+        <path d="M184 60 Q204 48 226 56" fill="none" stroke="#6b4a36" stroke-width="5" stroke-linecap="round"/>
+      </g>
+    </g>
+
+    <!-- Купюра летить з гаманця в хмаринку (кожні 4 с) -->
+    <g transform="translate(21 201)"><g class="cash"><use href="#flying" transform="rotate(-10) scale(.2)"/></g></g>
+  </g>
+</svg>
