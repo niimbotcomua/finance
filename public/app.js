@@ -2572,10 +2572,12 @@ function expenseFormCard(groupId, members, categories, rates, reload, editing = 
   const isEqual = !editing || (participantIds.length > 0 && participantIds.length === shareOf.size
     && Math.max(...baseAmounts) - Math.min(...baseAmounts) <= 1);
 
-  const splitType = h('select', { name: 'splitType' },
-    h('option', { value: 'equal', selected: isEqual }, 'Порівну'),
-    h('option', { value: 'exact', selected: !isEqual }, 'Точними сумами'),
+  // Перемикач «Порівну / Точними сумами» — дві кнопки замість випадного списку.
+  const splitType = h('div', { class: 'checks pick split-toggle', role: 'radiogroup', 'aria-label': 'Як ділити' },
+    [['equal', 'Порівну'], ['exact', 'Точними сумами']].map(([value, label]) =>
+      h('label', {}, h('input', { type: 'radio', name: 'splitType', value, checked: (value === 'equal') === isEqual }), label)),
   );
+  const splitValue = () => splitType.querySelector('input:checked').value;
   const equalBox = h('div', { class: 'checks', hidden: !isEqual },
     members.map((m) =>
       h('label', {}, h('input', {
@@ -2649,8 +2651,8 @@ function expenseFormCard(groupId, members, categories, rates, reload, editing = 
     shareHint,
   );
   splitType.addEventListener('change', () => {
-    equalBox.hidden = splitType.value !== 'equal';
-    exactBox.hidden = splitType.value !== 'exact';
+    equalBox.hidden = splitValue() !== 'equal';
+    exactBox.hidden = splitValue() !== 'exact';
     updateShares();
   });
 
@@ -2682,7 +2684,7 @@ function expenseFormCard(groupId, members, categories, rates, reload, editing = 
         ),
       ),
     ),
-    h('label', {}, 'Як ділити', splitType),
+    h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Як ділити'), splitType),
     equalBox,
     exactBox,
     error,
