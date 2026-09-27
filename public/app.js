@@ -535,6 +535,20 @@ function emailNotifyCard() {
   );
 }
 
+/** Фірмовий значок Telegram (синє коло з паперовим літачком). */
+function telegramIcon(size = 28) {
+  const span = h('span', { class: 'tg-icon', 'aria-hidden': 'true' });
+  span.innerHTML = `<svg viewBox="0 0 240 240" width="${size}" height="${size}">`
+    + '<defs><linearGradient id="tg-grad" x1=".667" y1=".167" x2=".417" y2=".75">'
+    + '<stop offset="0" stop-color="#37aee2"/><stop offset="1" stop-color="#1e96c8"/></linearGradient></defs>'
+    + '<circle cx="120" cy="120" r="120" fill="url(#tg-grad)"/>'
+    + '<path fill="#c8daea" d="M98 175c-3.9 0-3.2-1.5-4.6-5.2L82 132.2 170 80"/>'
+    + '<path fill="#a9c9dd" d="M98 175c3 0 4.3-1.4 6-3l16-15.6-20-12"/>'
+    + '<path fill="#fff" d="M100 144.4l48.4 35.7c5.5 3 9.5 1.5 10.9-5.1L179 82.2c2-8.1-3.1-11.7-8.4-9.3L55 117.5c-7.9 3.2-7.8 7.6-1.4 9.5l29.7 9.3L152 93c3.2-2 6.2-.9 3.8 1.3"/>'
+    + '</svg>';
+  return span;
+}
+
 /** Профіль: сповіщення в Telegram про нові витрати (картка з'являється, коли адміністратор налаштував бота). */
 function telegramCard() {
   const card = h('div', { class: 'card', hidden: true });
@@ -567,7 +581,8 @@ function telegramCard() {
         }
         hint.hidden = false;
       }),
-    }, status.linked ? 'Підключити інший Telegram' : 'Підключити Telegram');
+    }, telegramIcon(20), status.linked ? 'Підключити інший Telegram' : 'Підключити Telegram');
+    connect.classList.add('tg-connect');
     const hint = h('p', { class: 'sub', hidden: true },
       'У Telegram натисніть «Старт» (Start), потім ',
       h('a', { href: '#/profile', onClick: (e) => { e.preventDefault(); render(); } }, 'оновіть цю картку'), '.');
@@ -584,15 +599,25 @@ function telegramCard() {
       }, 'Вимкнути');
       buttons.append(off);
     }
+    // Плитка бота: аватарка, назва й @username — натиск відкриває бота в Telegram.
+    const botUrl = `https://t.me/${status.bot_username}`;
+    const bot = h('a', { class: 'tg-bot', href: botUrl, target: '_blank', rel: 'noopener', title: 'Відкрити бота в Telegram' },
+      h('img', { class: 'tg-bot-avatar', src: '/img/bot-avatar.png', alt: '', width: 56, height: 56 }),
+      h('span', { class: 'tg-bot-info' },
+        h('strong', { class: 'tg-bot-name' }, 'Спільні витрати'),
+        h('span', { class: 'tg-bot-username' }, `@${status.bot_username}`)),
+      h('span', { class: `tg-status${status.linked ? ' on' : ''}` }, status.linked ? 'Підключено' : 'Не підключено'));
     card.replaceChildren(
-      h('h2', {}, 'Сповіщення в Telegram'),
+      h('div', { class: 'tg-head' }, telegramIcon(), h('h2', {}, 'Сповіщення в Telegram')),
+      bot,
       h('p', { class: 'sub' }, status.linked
-        ? `✅ Підключено. Бот @${status.bot_username} надсилає вам нові витрати з ваших груп (крім доданих вами).`
-        : `Бот @${status.bot_username} надсилатиме вам повідомлення, щойно хтось додасть витрату у вашій групі.`),
+        ? 'Бот надсилає вам нові витрати з ваших груп (крім доданих вами): що купили, скільки, ваша частка й баланс.'
+        : 'Підключіть бота — і він надсилатиме вам повідомлення, щойно хтось додасть витрату у вашій групі.'),
       buttons,
       hint,
       error,
     );
+    card.classList.add('tg-card');
     card.hidden = false;
   }
   render().catch(() => {}); // бота не налаштовано або міграцію ще не застосовано — картку не показуємо
