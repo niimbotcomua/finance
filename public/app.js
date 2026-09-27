@@ -27,11 +27,12 @@ const DESIGNS = {
   dark: { label: 'Темний', note: 'Початковий: темний фон, рожево-помаранчеві акценти.' },
   mono: { label: 'Світлий', note: 'У стилі monobank: градієнт угорі, білі картки, чорні кнопки.' },
   nova: { label: 'Плитки', note: 'У стилі «Нової пошти»: мінімалізм, сірі плитки, червоні кнопки.' },
+  paper: { label: 'Папір', note: 'Спокійний «паперовий»: тепло-сірий фон, білі картки з рамкою, теракотовий акцент.' },
 };
 function applyDesign(design) {
   const value = DESIGNS[design] ? design : 'dark';
   document.documentElement.dataset.design = value;
-  document.querySelector('meta[name=theme-color]')?.setAttribute('content', { mono: '#ffffff', nova: '#ffffff' }[value] ?? '#0d0d0f');
+  document.querySelector('meta[name=theme-color]')?.setAttribute('content', { mono: '#ffffff', nova: '#ffffff', paper: '#ffffff' }[value] ?? '#0d0d0f');
   try {
     localStorage.setItem('design', value);
   } catch {
@@ -225,7 +226,7 @@ function submitHandler(form, errorEl, action) {
 
 /** Назва, опис, логотип сайту (налаштовує адмін). Доступно й до входу. */
 let siteMeta = null;
-let siteLogos = {}; // окремий логотип для кожного дизайну: { dark, mono, nova }
+let siteLogos = {}; // окремий логотип для кожного дизайну: { dark, mono, nova, paper }
 const brandingUrl = (path) => supabase.storage.from('branding').getPublicUrl(path).data.publicUrl;
 const logoFor = (design) => siteLogos?.[design] ?? siteMeta?.logo_path ?? null;
 

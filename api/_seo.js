@@ -45,7 +45,7 @@ export function seoTags(meta, { origin, supabaseUrl }) {
 
 /** Замінює блок між <!-- seo:start --> і <!-- seo:end --> та вмикає збережений дизайн. */
 export function renderPage(html, meta, options) {
-  const design = ['mono', 'nova'].includes(meta?.design) ? meta.design : 'dark';
+  const design = ['mono', 'nova', 'paper'].includes(meta?.design) ? meta.design : 'dark';
   return html
     .replace(/<!-- seo:start -->[\s\S]*?<!-- seo:end -->/, `<!-- seo:start -->\n  ${seoTags(meta, options)}\n  <!-- seo:end -->`)
     .replace('<html lang="uk">', `<html lang="uk" data-design="${design}">`);

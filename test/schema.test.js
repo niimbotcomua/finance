@@ -432,6 +432,8 @@ test('дизайн застосунку: перемикає лише адмін'
   assert.equal(await current(), 'mono');
   await as('anna', 'select public.admin_set_design($1)', ['nova']);
   assert.equal(await current(), 'nova');
+  await as('anna', 'select public.admin_set_design($1)', ['paper']);
+  assert.equal(await current(), 'paper');
   await as('anna', 'select public.admin_set_design($1)', ['dark']);
 });
 
@@ -483,7 +485,9 @@ test('окремий логотип для кожного дизайну', async
   assert.equal((await setLogo('anna', 'dark', 'dark-1.png'))[0].old, null);
   await setLogo('anna', 'mono', 'shared.png');
   await setLogo('anna', 'nova', 'shared.png');
-  assert.deepEqual(await logos(), { dark: 'dark-1.png', mono: 'shared.png', nova: 'shared.png' });
+  await setLogo('anna', 'paper', 'paper-1.png');
+  assert.deepEqual(await logos(), { dark: 'dark-1.png', mono: 'shared.png', nova: 'shared.png', paper: 'paper-1.png' });
+  assert.equal((await setLogo('anna', 'paper', null))[0].old, 'paper-1.png');
   // Заміна: старий файл повертається для видалення, лише якщо ним більше ніхто не користується.
   assert.equal((await setLogo('anna', 'dark', 'dark-2.png'))[0].old, 'dark-1.png');
   assert.equal((await setLogo('anna', 'mono', null))[0].old, null); // shared.png ще в nova
@@ -494,6 +498,8 @@ test('окремий логотип для кожного дизайну', async
 test('власний дизайн користувача: змінює лише свій', async () => {
   await as('vira', "update public.profiles set design = 'nova' where id = $1", [users.vira]);
   assert.equal((await as('vira', 'select design from public.profiles where id = $1', [users.vira]))[0].design, 'nova');
+  await as('vira', "update public.profiles set design = 'paper' where id = $1", [users.vira]);
+  assert.equal((await as('vira', 'select design from public.profiles where id = $1', [users.vira]))[0].design, 'paper');
   await rejects(as('vira', "update public.profiles set design = 'pink' where id = $1", [users.vira]), 'profiles_design_check');
   // Чужий профіль не змінюється (RLS просто не знаходить рядок).
   await as('vira', "update public.profiles set design = 'mono' where id = $1", [users.anna]);
