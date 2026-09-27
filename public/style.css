@@ -801,3 +801,6 @@ body.auth-page main { max-width: none; padding: 0; }
 /* Витрата, відкрита за посиланням (з Telegram), коротко підсвічується */
 li.flash > .expense { animation: expense-flash 2.4s ease-out; border-radius: var(--radius); }
 @keyframes expense-flash { 0%, 40% { box-shadow: 0 0 0 3px var(--accent); } 100% { box-shadow: 0 0 0 3px transparent; } }
+
+/* Курси валют: вибір валюти для нових витрат */
+.default-currency { display: grid; gap: 6px; margin-top: 16px; max-width: 360px; }

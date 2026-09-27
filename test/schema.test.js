@@ -666,3 +666,22 @@ test('перегляди витрати: автор уже бачив, учас�
   assert.deepEqual(await viewers('stranger'), []);
   await rejects(as('bohdan', 'insert into public.expense_views (expense_id, user_id) values ($1, $2)', [eid, users.vira]), 'permission denied');
 });
+
+test('валюта для нових витрат у групі: основна або з курсом, змінює учасник', async () => {
+  const [{ create_group: gid }] = await as('anna', 'select public.create_group($1)', ['Бухарест']);
+  await as('anna', 'select public.add_group_member($1, $2)', [gid, 'bohdan@example.com']);
+  const current = async () => (await as('anna', 'select expense_currency from public.groups where id = $1', [gid]))[0].expense_currency;
+  const setDefault = (who, cur) => as(who, 'select public.set_group_expense_currency(gid => $1, currency => $2)', [gid, cur]);
+  assert.equal(await current(), null);
+  await rejects(setDefault('bohdan', 'EUR'), 'Спершу додайте курс');
+  await as('anna', 'select public.set_group_rate(gid => $1, currency => $2, rate => $3)', [gid, 'EUR', 45]);
+  await setDefault('bohdan', 'EUR');
+  assert.equal(await current(), 'EUR');
+  await rejects(setDefault('stranger', 'EUR'), 'Групу не знайдено');
+  await rejects(as('bohdan', 'update public.groups set expense_currency = null where id = $1', [gid]), 'permission denied');
+  // Прибрали курс — знову основна валюта; обрати основну — те саме, що null.
+  await as('anna', 'select public.set_group_rate(gid => $1, currency => $2, rate => $3)', [gid, 'EUR', null]);
+  assert.equal(await current(), null);
+  await setDefault('anna', 'UAH');
+  assert.equal(await current(), null);
+});
