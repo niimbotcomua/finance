@@ -191,6 +191,23 @@ const pendingInvite = {
   },
 };
 
+// Куди повернути людину після входу, якщо вона відкрила посилання (напр. на витрату з Telegram), ще не увійшовши.
+const AFTER_LOGIN_KEY = 'afterLogin';
+const afterLogin = {
+  set(hash) {
+    try { sessionStorage.setItem(AFTER_LOGIN_KEY, hash); } catch { /* недоступно — просто на головну */ }
+  },
+  take() {
+    try {
+      const hash = sessionStorage.getItem(AFTER_LOGIN_KEY);
+      sessionStorage.removeItem(AFTER_LOGIN_KEY);
+      return hash;
+    } catch {
+      return null;
+    }
+  },
+};
+
 const inviteLink = (token) => `${location.origin}${location.pathname}#/join/${token}`;
 
 async function loadCurrentUser() {
@@ -2892,7 +2909,7 @@ function expensesCard(groupId, allExpenses, profileOf, reload, onEdit) {
       if (details.open) groupUi.openExpenses.add(e.id);
       else groupUi.openExpenses.delete(e.id);
     });
-    return h('li', {}, details);
+    return h('li', { id: `expense-${e.id}` }, details);
   };
 
   // Ширина колонок — за найдовшою сумою (вимірюємо реальним шрифтом), щоб шапка, рядки й «Разом» стояли рівно.
@@ -3029,7 +3046,32 @@ async function route() {
       return;
     }
     if (!currentUser && hash !== '#/login') {
+      if (/^#\/groups\/\d+(\/expenses\/\d+)?$/.test(hash)) afterLogin.set(hash);
       location.hash = '#/login';
+      return;
+    }
+    if (currentUser && (hash === '#/' || hash === '#')) {
+      const back = afterLogin.take();
+      if (back) {
+        location.hash = back;
+        return;
+      }
+    }
+    // Посилання на конкретну витрату (кнопка в Telegram): відкриваємо групу з розгорнутою витратою.
+    const expenseMatch = hash.match(/^#\/groups\/(\d+)\/expenses\/(\d+)$/);
+    if (expenseMatch) {
+      const [groupId, expenseId] = [Number(expenseMatch[1]), Number(expenseMatch[2])];
+      Object.assign(groupUi, { groupId, panel: null, period: 'all', inviteOpen: false, openExpenses: new Set([expenseId]), expenseFilter: newExpenseFilter() });
+      history.replaceState(null, '', `#/groups/${groupId}`);
+      renderTabbar(`#/groups/${groupId}`);
+      await renderGroup(groupId);
+      const item = document.getElementById(`expense-${expenseId}`);
+      if (item) {
+        item.scrollIntoView({ block: 'center' });
+        item.classList.add('flash');
+      } else {
+        toast('Витрату не знайдено — можливо, її видалили');
+      }
       return;
     }
     if (hash === '#/login') {
