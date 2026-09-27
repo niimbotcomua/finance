@@ -202,3 +202,5 @@ html[data-design="nova"] .filter-panel .segmented button.active { background: #f
 html[data-design="nova"] .filter-panel select, html[data-design="nova"] .filter-panel input[type=date] { background: #fff; }
 html[data-design="nova"] .filter-toggle { text-transform: none; letter-spacing: 0; font-size: 14px; }
 html[data-design="nova"] .filter-count { border-radius: 4px; }
+html[data-design="nova"] .split-switch { border-radius: 8px; }
+html[data-design="nova"] .split-switch::before, html[data-design="nova"] .split-switch label { border-radius: 6px; }
