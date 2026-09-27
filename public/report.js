@@ -62,7 +62,7 @@ export function buildReport(data) {
         columns: [
           col('Учасник', 'name', 'text', 22), col('Email', 'email', 'text', 28),
           col(`Заплатив за період, ${group.currency}`, 'paid', 'money', 18),
-          col(`Його частка за період, ${group.currency}`, 'share', 'money', 18),
+          col(`Його витрата за період, ${group.currency}`, 'share', 'money', 18),
           col(`Баланс на сьогодні, ${group.currency}`, 'balance', 'money', 18),
           col('Стан', 'state', 'text', 16),
         ],
@@ -94,7 +94,7 @@ export function buildReport(data) {
         col('Тег', 'tag', 'text', 18), col('Хто платив', 'payer', 'text', 18),
         col(`Сума, ${group.currency}`, 'amount', 'money', 14),
         col('Валюта витрати', 'currency', 'text', 10), col('Сума у валюті', 'original', 'money', 14), col('Курс', 'rate', 'rate', 10),
-        ...members.map((m) => col(`Частка: ${m.name}`, `share_${m.id}`, 'money', 14)),
+        ...members.map((m) => col(`Витрата: ${m.name}`, `share_${m.id}`, 'money', 14)),
         col('Фото', 'photos', 'number', 7), col('Змінено', 'edited', 'text', 9),
       ],
       rows: expenses.map((e, i) => {
@@ -128,7 +128,7 @@ export function buildReport(data) {
   const tagsSheet = {
     name: 'По тегах',
     blocks: [{
-      columns: [col('Тег', 'tag', 'text', 24), col('Витрат', 'count', 'number', 10), col(`Сума, ${group.currency}`, 'total', 'money', 16), col('Частка', 'pct', 'percent', 10)],
+      columns: [col('Тег', 'tag', 'text', 24), col('Витрат', 'count', 'number', 10), col(`Сума, ${group.currency}`, 'total', 'money', 16), col('Відсоток', 'pct', 'percent', 10)],
       rows: summary.categories.map((c) => ({
         tag: c.categoryId ? categoryOf(c.categoryId)?.name ?? '—' : 'Без тегу',
         count: c.count, total: money(c.total), pct: summary.total ? c.total / summary.total : 0,
@@ -258,7 +258,7 @@ export function buildPdfDoc(report) {
       ? `${pdfMoney(row.amount)}\n(${pdfMoney(row.original)} ${row.currency})` : pdfMoney(row.amount),
     shares: shareColumns
       .filter((c) => row[c.key] !== null && row[c.key] !== undefined)
-      .map((c) => `${c.header.replace(/^Частка: /, '')} ${pdfMoney(row[c.key])}`).join('\n'),
+      .map((c) => `${c.header.replace(/^Витрата: /, '')} ${pdfMoney(row[c.key])}`).join('\n'),
     what: [row.description, row.tag ? `#${row.tag}` : '', row.photos ? `фото: ${row.photos}` : ''].filter(Boolean).join('\n'),
   }));
   const amountHeader = expenses.columns.find((c) => c.key === 'amount').header;
@@ -304,7 +304,7 @@ export function buildPdfDoc(report) {
           { header: 'Опис', key: 'what', type: 'text' },
           { header: 'Хто платив', key: 'payer', type: 'text' },
           { header: amountHeader, key: 'amountText', type: 'money-text' },
-          { header: 'Частки', key: 'shares', type: 'text' },
+          { header: 'Витрати учасників', key: 'shares', type: 'text' },
         ], expenseRows, {
           widths: [16, 46, '*', 62, 70, 110],
           totals: { what: 'Разом', amountText: pdfMoney(expenses.totals.amount) },

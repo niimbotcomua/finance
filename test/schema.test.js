@@ -102,7 +102,7 @@ test('повний сценарій з правилами доступу', async
 
   await addExpense('anna', 90000, 'anna', [['anna', 30000], ['bohdan', 30000], ['vira', 30000]]);
   await addExpense('bohdan', 30000, 'bohdan', [['vira', 20000], ['bohdan', 10000], ['anna', 0]]);
-  await rejects(addExpense('anna', 100, 'anna', [['vira', 50]]), 'Сума часток');
+  await rejects(addExpense('anna', 100, 'anna', [['vira', 50]]), 'Сума витрат учасників');
   await rejects(addExpense('anna', 100, 'anna', [['stranger', 100]]), 'не належить');
   await rejects(addExpense('anna', 100, 'stranger', [['anna', 100]]), 'Платник');
 
@@ -270,7 +270,7 @@ test('редагування витрати та історія змін', async
   // Інший учасник може редагувати; чужий — ні; перевірки ті самі, що й при додаванні.
   await edit('vira', 1200, [['bohdan', 400], ['vira', 800]]);
   await rejects(edit('stranger', 1200, [['bohdan', 1200]]), 'Витрату не знайдено');
-  await rejects(edit('vira', 1200, [['bohdan', 100]]), 'Сума часток');
+  await rejects(edit('vira', 1200, [['bohdan', 100]]), 'Сума витрат учасників');
   const [e] = await as('vira', 'select amount, description from public.expenses where id = $1', [eid]);
   assert.equal(Number(e.amount), 1200);
   assert.equal(e.description, 'Піца велика');
@@ -580,7 +580,7 @@ test('Telegram: прив\'язка через бота і сповіщення �
   assert.equal(sent[0].url, 'https://api.telegram.org/bot123:ABC/sendMessage');
   assert.equal(sent[0].body.chat_id, 555);
   assert.equal(sent[0].body.text,
-    '💸 Нова витрата в групі «Відпустка»\nГотель — 1 234,56 грн\nЗаплатив(ла): Ганна\nВаша частка: 617,28 грн');
+    '💸 Нова витрата в групі «Відпустка»\nГотель — 1 234,56 грн\nЗаплатив(ла): Ганна\nВаша витрата: 617,28 грн');
 
   // /stop і кнопка «Відключити» вимикають сповіщення.
   assert.match((await webhook(secret, '/stop')).text, /вимкнено/);

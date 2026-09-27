@@ -49,7 +49,7 @@ test('PDF: A4, усі витрати з частками й валютою, пі
   assert.equal(doc.pageSize, 'A4');
   const tables = doc.content.filter((c) => c.table).map((c) => c.table);
   assert.equal(tables.every((t) => t.headerRows === 1), true); // шапка таблиць повторюється на нових сторінках
-  const expensesTable = tables.find((t) => t.body[0].some((cell) => cell.text === 'Частки'));
+  const expensesTable = tables.find((t) => t.body[0].some((cell) => cell.text === 'Витрати учасників'));
   const texts = expensesTable.body.map((row) => row.map((cell) => cell.text));
   assert.equal(texts.length, 1 + 2 + 1); // шапка, 2 витрати, «Разом»
   assert.match(texts[1][2], /Кава\n#Кафе\nфото: 1/);

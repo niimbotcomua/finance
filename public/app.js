@@ -512,7 +512,7 @@ function emailNotifyCard() {
   return h('div', { class: 'card' },
     h('h2', {}, 'Сповіщення на пошту'),
     h('label', { class: 'filter-switch' }, input, 'Надсилати лист, коли в моїй групі додають нову витрату'),
-    h('p', { class: 'sub' }, `Лист прийде на ${currentUser.email}: що купили, скільки, хто платив і ваша частка. `
+    h('p', { class: 'sub' }, `Лист прийде на ${currentUser.email}: що купили, скільки, хто платив і ваша витрата. `
       + 'Про витрати, які додаєте ви самі, листів не буде.'),
     status,
   );
@@ -1776,14 +1776,14 @@ function reportCard(group, members, expenses, settlements, categoryOf) {
 
   return h('div', { class: 'card report-card' },
     h('h2', {}, 'Звіт по групі'),
-    h('p', { class: 'sub' }, 'Усі оплати, частки учасників, баланси й хто кому винен.'),
+    h('p', { class: 'sub' }, 'Усі оплати, витрати учасників, баланси й хто кому винен.'),
     h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Період'), periodChips),
     h('div', { class: 'export-tiles' }, excelTile, pdfTile, mailTile),
     mailPanel,
     status,
     h('details', { class: 'report-help' },
       h('summary', {}, 'Що всередині та як відкрити в Google Таблицях'),
-      h('p', { class: 'sub' }, 'Excel: «Підсумок», «Витрати» (дата, опис, тег, хто платив, сума, валюта й курс, частка кожного), '
+      h('p', { class: 'sub' }, 'Excel: «Підсумок», «Витрати» (дата, опис, тег, хто платив, сума, валюта й курс, витрата кожного), '
         + '«Повернення боргів», «По тегах». PDF — те саме на аркушах A4.'),
       h('p', { class: 'sub' }, 'Google Таблиці: sheets.new → «Файл» → «Імпортувати» → «Завантажити» й виберіть файл Excel.')),
   );
@@ -1897,7 +1897,7 @@ function analyticsCard(allExpenses, members, categoryOf) {
             tile('На 1 учасника', formatMoney(s.perMember), `загальна сума ÷ ${members.length}`),
           ),
           h('h3', {}, 'Учасники'),
-          h('p', { class: 'sub' }, 'Частка — скільки витрат припадає на людину; середній чек — її середня частка в одній витраті.'),
+          h('p', { class: 'sub' }, 'Витрата — скільки витрат припадає на людину; середній чек — її середня витрата в одній покупці.'),
           h('ul', { class: 'bars' }, s.people.map((p) => barRow(
             h('span', { class: 'person' }, avatar(profileOf(p.userId)), profileOf(p.userId).name),
             p.share, maxShare,
@@ -1933,7 +1933,7 @@ function describeChange(entry, nameOf, categoryOf) {
   if (o.paid_by !== n.paid_by) changes.push(`платив(ла): ${nameOf(o.paid_by)} → ${nameOf(n.paid_by)}`);
   if (o.date !== n.date) changes.push(`дата: ${formatDate(o.date)} → ${formatDate(n.date)}`);
   if ((o.category_id ?? null) !== (n.category_id ?? null)) changes.push(`тег: ${tag(o.category_id)} → ${tag(n.category_id)}`);
-  if (JSON.stringify(o.shares) !== JSON.stringify(n.shares)) changes.push(`частки: ${sharesText(o.shares)} → ${sharesText(n.shares)}`);
+  if (JSON.stringify(o.shares) !== JSON.stringify(n.shares)) changes.push(`витрати учасників: ${sharesText(o.shares)} → ${sharesText(n.shares)}`);
   return [`змінив(ла) «${o.description}»`, ...changes];
 }
 
@@ -2627,7 +2627,7 @@ function expenseFormCard(groupId, members, categories, rates, reload, editing = 
     shareHint.textContent = rest === null ? 'Спершу вкажіть суму витрати'
       : rest === 0 ? '✓ Усю суму розподілено'
       : rest > 0 ? `Залишилось розподілити: ${formatMoney(rest, cur())}`
-      : `Частки більші за суму на ${formatMoney(-rest, cur())}`;
+      : `Витрати учасників більші за суму на ${formatMoney(-rest, cur())}`;
   }
   shareInputs.forEach((input, i) => input.addEventListener('input', () => {
     if (input.value.trim()) manual.add(i);
@@ -2713,12 +2713,12 @@ function expenseFormCard(groupId, members, categories, rates, reload, editing = 
         const raw = String(data.get(`share-${m.id}`) ?? '').trim();
         if (!raw) continue;
         const value = parseMoney(raw);
-        if (value === null) throw new Error(`Некоректна частка для ${m.name}`);
+        if (value === null) throw new Error(`Некоректна витрата для ${m.name}`);
         shares.push({ userId: m.id, amount: value });
       }
       const total = shares.reduce((s, x) => s + x.amount, 0);
       if (total !== original) {
-        throw new Error(`Сума часток (${formatMoney(total, code)}) не дорівнює сумі витрати (${formatMoney(original, code)})`);
+        throw new Error(`Сума витрат учасників (${formatMoney(total, code)}) не дорівнює сумі витрати (${formatMoney(original, code)})`);
       }
       if (code !== baseCurrency) shares = convertShares(shares, rate, amount);
     }
@@ -2801,10 +2801,10 @@ const formatPlain = (kopecks) => (kopecks / 100).toLocaleString('uk-UA', { minim
 /** Частка поточного користувача у витраті (у копійках основної валюти); 0 — не бере участі. */
 const myShareOf = (e) => e.shares.find((s) => s.userId === currentUser.id)?.amount ?? 0;
 
-/** Колонка «Ваша частка» в рядку витрати. */
+/** Колонка «Ваша витрата» в рядку витрати. */
 function myShareCell(e) {
   const mine = myShareOf(e);
-  return h('div', { class: 'expense-mine', title: 'Ваша частка в цій витраті' },
+  return h('div', { class: 'expense-mine', title: 'Ваша витрата в цій покупці' },
     mine > 0 ? h('span', { class: 'amount mine' }, formatPlain(mine)) : h('span', { class: 'amount sub' }, '—'),
     e.paidBy === currentUser.id ? h('div', { class: 'sub' }, 'ви платили') : null);
 }
@@ -2885,7 +2885,7 @@ function expensesCard(groupId, allExpenses, profileOf, reload, onEdit) {
   const headerFont = `600 12px ${getComputedStyle(document.body).fontFamily}`;
   const headerWidth = (text) => { measure.font = headerFont; const w = measure.measureText(text).width; measure.font = `700 15px ${getComputedStyle(document.body).fontFamily}`; return w; };
   const amountHeader = `Сума, ${currencySymbol(baseCurrency)}`;
-  const mineHeader = 'Ваша частка';
+  const mineHeader = 'Ваша витрата';
   // Результати пошуку/фільтрів перемальовуються окремо — поле пошуку не втрачає фокус.
   const results = h('div', {});
   const renderResults = () => {
@@ -2925,7 +2925,7 @@ function expensesCard(groupId, allExpenses, profileOf, reload, onEdit) {
           type: 'checkbox', checked: Boolean(state.onlyMine),
           onChange: (e) => { state.onlyMine = e.target.checked; update(); },
         }),
-        'Лише мої витрати (я платив чи маю частку)'),
+        'Лише мої витрати (я платив чи маю в них витрату)'),
     ],
   });
   renderResults();
