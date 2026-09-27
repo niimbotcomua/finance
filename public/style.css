@@ -819,11 +819,17 @@ li.flash > .expense { animation: expense-flash 2.4s ease-out; border-radius: var
 .tg-bot-info { display: grid; gap: 2px; min-width: 0; flex: 1; }
 .tg-bot-name { font-size: 17px; font-weight: 800; }
 .tg-bot-username { color: #2aabee; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tg-status { flex: none; font-size: 12px; font-weight: 700; padding: 5px 10px; border-radius: 999px; background: var(--card); color: var(--muted); white-space: nowrap; }
+.tg-status { justify-self: start; margin-top: 4px; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; background: var(--card); color: var(--muted); white-space: nowrap; }
 .tg-status::before { content: ''; display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 50%; background: currentColor; vertical-align: 1px; }
 .tg-status.on { background: color-mix(in srgb, #1d9a50 12%, transparent); color: #1d9a50; }
 button.tg-connect, html[data-design] button.tg-connect { display: inline-flex; align-items: center; gap: 8px; background: #2aabee; color: #fff; }
 button.tg-connect .tg-icon svg circle { fill: #fff; }
 button.tg-connect .tg-icon svg path { fill: #2aabee; }
 button.tg-connect .tg-icon svg path:first-of-type, button.tg-connect .tg-icon svg path:nth-of-type(2) { fill: #8fd3f4; }
-@media (max-width: 480px) { .tg-bot { flex-wrap: wrap; } .tg-status { margin-left: 70px; } }
+.tg-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+@media (max-width: 480px) {
+  .tg-bot { gap: 12px; padding: 12px; }
+  .tg-bot-avatar { width: 48px; height: 48px; }
+  .tg-bot-name { font-size: 16px; }
+  .tg-actions > button { flex: 1 1 100%; justify-content: center; }
+}
