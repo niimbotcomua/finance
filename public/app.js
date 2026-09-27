@@ -24,15 +24,14 @@ let currentUser = null;
 // Загальний дизайн обирає адміністратор (app_settings.design), але кожен користувач може вибрати свій у профілі
 // (profiles.design). Останній застосований дизайн пам'ятаємо в браузері, щоб сторінка не «блимала».
 const DESIGNS = {
-  dark: { label: 'Темний', note: 'Початковий: темний фон, рожево-помаранчеві акценти.' },
-  mono: { label: 'Світлий', note: 'У стилі monobank: градієнт угорі, білі картки, чорні кнопки.' },
   nova: { label: 'Плитки', note: 'У стилі «Нової пошти»: мінімалізм, сірі плитки, червоні кнопки.' },
-  paper: { label: 'Папір', note: 'Спокійний «паперовий»: тепло-сірий фон, білі картки з рамкою, теракотовий акцент.' },
+  dark: { label: 'Темний', note: 'Темний фон, рожево-помаранчеві акценти.' },
 };
+const DEFAULT_DESIGN = 'nova';
 function applyDesign(design) {
-  const value = DESIGNS[design] ? design : 'dark';
+  const value = DESIGNS[design] ? design : DEFAULT_DESIGN;
   document.documentElement.dataset.design = value;
-  document.querySelector('meta[name=theme-color]')?.setAttribute('content', { mono: '#ffffff', nova: '#ffffff', paper: '#ffffff' }[value] ?? '#0d0d0f');
+  document.querySelector('meta[name=theme-color]')?.setAttribute('content', value === 'dark' ? '#0d0d0f' : '#ffffff');
   try {
     localStorage.setItem('design', value);
   } catch {
@@ -42,7 +41,7 @@ function applyDesign(design) {
 try {
   applyDesign(localStorage.getItem('design'));
 } catch {
-  applyDesign('dark');
+  applyDesign(DEFAULT_DESIGN);
 }
 let siteDesign = null; // обраний адміністратором для всіх
 let userDesign = null; // власний вибір користувача (null — як у всіх)
@@ -88,7 +87,7 @@ function moneyFormat(currency) {
 }
 /** Сума в сотих частках → «1 234,50 грн» (за замовчуванням — в основній валюті групи). */
 const formatMoney = (kopecks, currency = baseCurrency) => moneyFormat(currency).format(kopecks / 100);
-/** Велика сума: гривні крупно, копійки й знак валюти — дрібніше (як у mono). */
+/** Велика сума: гривні крупно, копійки й знак валюти — дрібніше. */
 function bigMoney(kopecks, currency) {
   const parts = moneyFormat(currency).formatToParts(kopecks / 100);
   const cut = parts.findIndex((p) => p.type === 'decimal');
@@ -228,7 +227,7 @@ function submitHandler(form, errorEl, action) {
 
 /** Назва, опис, логотип сайту (налаштовує адмін). Доступно й до входу. */
 let siteMeta = null;
-let siteLogos = {}; // окремий логотип для кожного дизайну: { dark, mono, nova, paper }
+let siteLogos = {}; // окремий логотип для кожного дизайну: { dark, nova }
 const brandingUrl = (path) => supabase.storage.from('branding').getPublicUrl(path).data.publicUrl;
 const logoFor = (design) => siteLogos?.[design] ?? siteMeta?.logo_path ?? null;
 
@@ -238,7 +237,7 @@ function renderBrand() {
   const design = document.documentElement.dataset.design;
   const logo = logoFor(design);
   // Без завантаженого адміном логотипу — вбудований, підфарбований під дизайн.
-  const src = logo ? brandingUrl(logo) : `/logos/${DESIGNS[design] ? design : 'dark'}.png`;
+  const src = logo ? brandingUrl(logo) : `/logos/${DESIGNS[design] ? design : DEFAULT_DESIGN}.png`;
   if (brand.firstElementChild?.getAttribute('src') === src) return;
   brand.replaceChildren(h('img', { class: 'brand-logo', src, alt: siteMeta?.site_title ?? 'Спільні витрати' }));
 }
@@ -608,9 +607,9 @@ function designChoiceCard() {
   h('span', { class: 'design-name' }, label),
   h('span', { class: 'sub' }, note));
   function render() {
-    const common = DESIGNS[siteDesign ?? 'dark'];
+    const common = DESIGNS[siteDesign ?? DEFAULT_DESIGN];
     options.replaceChildren(
-      option(null, 'Як у всіх', `Зараз це «${common.label}» — його обирає адміністратор.`, siteDesign ?? 'dark'),
+      option(null, 'Як у всіх', `Зараз це «${common.label}» — його обирає адміністратор.`, siteDesign ?? DEFAULT_DESIGN),
       ...Object.entries(DESIGNS).map(([key, d]) => option(key, d.label, d.note, key)),
     );
   }
@@ -809,8 +808,8 @@ async function renderAdmin() {
   const renderDesignOptions = () => designOptions.replaceChildren(...Object.entries(DESIGNS).map(([key, d]) =>
     h('button', {
       type: 'button',
-      class: `design-option${(siteDesign ?? 'dark') === key ? ' active' : ''}`,
-      'aria-pressed': String((siteDesign ?? 'dark') === key),
+      class: `design-option${(siteDesign ?? DEFAULT_DESIGN) === key ? ' active' : ''}`,
+      'aria-pressed': String((siteDesign ?? DEFAULT_DESIGN) === key),
       onClick: async (e) => {
         e.currentTarget.disabled = true;
         try {

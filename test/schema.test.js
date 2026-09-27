@@ -425,16 +425,16 @@ test('валюта за замовчуванням: змінює лише адм
 test('дизайн застосунку: перемикає лише адмін', async () => {
   await db.query('insert into private.admins (user_id) values ($1) on conflict do nothing', [users.anna]);
   const current = async () => (await as('vira', 'select design from public.app_settings'))[0].design;
-  assert.equal(await current(), 'dark');
-  await rejects(as('bohdan', 'select public.admin_set_design($1)', ['mono']), 'адміністратора');
+  assert.equal(await current(), 'dark'); // вибір, зроблений до міграції 021, зберігається
+  await rejects(as('bohdan', 'select public.admin_set_design($1)', ['dark']), 'адміністратора');
   await rejects(as('anna', 'select public.admin_set_design($1)', ['pink']), 'Невідомий дизайн');
-  await as('anna', 'select public.admin_set_design(design => $1)', ['mono']);
-  assert.equal(await current(), 'mono');
+  // Прибрані дизайни більше не приймаються.
+  await rejects(as('anna', 'select public.admin_set_design($1)', ['mono']), 'Невідомий дизайн');
+  await rejects(as('anna', 'select public.admin_set_design($1)', ['paper']), 'Невідомий дизайн');
+  await as('anna', 'select public.admin_set_design(design => $1)', ['dark']);
+  assert.equal(await current(), 'dark');
   await as('anna', 'select public.admin_set_design($1)', ['nova']);
   assert.equal(await current(), 'nova');
-  await as('anna', 'select public.admin_set_design($1)', ['paper']);
-  assert.equal(await current(), 'paper');
-  await as('anna', 'select public.admin_set_design($1)', ['dark']);
 });
 
 test('до витрати можна прикріпити 2 фото', async () => {
@@ -483,27 +483,27 @@ test('окремий логотип для кожного дизайну', async
   await rejects(setLogo('anna', 'dark', '../x.png'), 'Некоректний файл');
 
   assert.equal((await setLogo('anna', 'dark', 'dark-1.png'))[0].old, null);
-  await setLogo('anna', 'mono', 'shared.png');
-  await setLogo('anna', 'nova', 'shared.png');
-  await setLogo('anna', 'paper', 'paper-1.png');
-  assert.deepEqual(await logos(), { dark: 'dark-1.png', mono: 'shared.png', nova: 'shared.png', paper: 'paper-1.png' });
-  assert.equal((await setLogo('anna', 'paper', null))[0].old, 'paper-1.png');
+  await rejects(setLogo('anna', 'paper', 'x.png'), 'Невідомий дизайн');
+  await setLogo('anna', 'nova', 'nova-1.png');
+  assert.deepEqual(await logos(), { dark: 'dark-1.png', nova: 'nova-1.png' });
   // Заміна: старий файл повертається для видалення, лише якщо ним більше ніхто не користується.
-  assert.equal((await setLogo('anna', 'dark', 'dark-2.png'))[0].old, 'dark-1.png');
-  assert.equal((await setLogo('anna', 'mono', null))[0].old, null); // shared.png ще в nova
+  assert.equal((await setLogo('anna', 'dark', 'shared.png'))[0].old, 'dark-1.png');
+  assert.equal((await setLogo('anna', 'nova', 'shared.png'))[0].old, 'nova-1.png');
+  assert.equal((await setLogo('anna', 'dark', null))[0].old, null); // shared.png ще в nova
   assert.equal((await setLogo('anna', 'nova', null))[0].old, 'shared.png');
-  assert.deepEqual(await logos(), { dark: 'dark-2.png' });
+  assert.deepEqual(await logos(), {});
 });
 
 test('власний дизайн користувача: змінює лише свій', async () => {
   await as('vira', "update public.profiles set design = 'nova' where id = $1", [users.vira]);
   assert.equal((await as('vira', 'select design from public.profiles where id = $1', [users.vira]))[0].design, 'nova');
-  await as('vira', "update public.profiles set design = 'paper' where id = $1", [users.vira]);
-  assert.equal((await as('vira', 'select design from public.profiles where id = $1', [users.vira]))[0].design, 'paper');
+  await as('vira', "update public.profiles set design = 'dark' where id = $1", [users.vira]);
+  assert.equal((await as('vira', 'select design from public.profiles where id = $1', [users.vira]))[0].design, 'dark');
   await rejects(as('vira', "update public.profiles set design = 'pink' where id = $1", [users.vira]), 'profiles_design_check');
+  await rejects(as('vira', "update public.profiles set design = 'paper' where id = $1", [users.vira]), 'profiles_design_check');
   // Чужий профіль не змінюється (RLS просто не знаходить рядок).
-  await as('vira', "update public.profiles set design = 'mono' where id = $1", [users.anna]);
-  assert.notEqual((await db.query('select design from public.profiles where id = $1', [users.anna])).rows[0].design, 'mono');
+  await as('vira', "update public.profiles set design = 'dark' where id = $1", [users.anna]);
+  assert.notEqual((await db.query('select design from public.profiles where id = $1', [users.anna])).rows[0].design, 'dark');
   await as('vira', 'update public.profiles set design = null where id = $1', [users.vira]);
 });
 

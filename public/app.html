@@ -13,14 +13,13 @@
   <meta name="twitter:card" content="summary_large_image">
   <!-- seo:end -->
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <meta name="theme-color" content="#0d0d0f">
+  <meta name="theme-color" content="#ffffff">
   <link rel="stylesheet" href="/style.css">
-  <link rel="stylesheet" href="/mono.css">
   <link rel="stylesheet" href="/nova.css">
-  <link rel="stylesheet" href="/paper.css">
   <script>
     // Версія дизайну з минулого візиту — одразу, щоб сторінка не «блимала» іншим оформленням.
-    try { var d = localStorage.getItem('design'); if (d) document.documentElement.dataset.design = d; } catch (e) {}
+    try { var d = localStorage.getItem('design'); if (d === 'dark' || d === 'nova') document.documentElement.dataset.design = d; } catch (e) {}
+    if (!document.documentElement.dataset.design) document.documentElement.dataset.design = 'nova';
   </script>
 </head>
 <body>

@@ -8,9 +8,7 @@ const out = fileURLToPath(new URL('../public/logos/', import.meta.url));
 // Кольори під кожен дизайн: тло шапки, купюра, коло з ₴, крильця, напис.
 const THEMES = {
   dark: { bg: '#0d0d0f', note: '#ffffff', noteLine: '#ff6a5c', coin: 'url(#grad)', wings: ['#ffffff', '#ffd9cc', '#ffb89e'], text: '#ffffff', upper: false },
-  mono: { bg: '#ffffff', note: '#ffffff', noteLine: '#0b0b0f', coin: '#0b0b0f', wings: ['#0b0b0f', '#5c5c66', '#a9a9b3'], text: '#0b0b0f', upper: false },
   nova: { bg: '#ffffff', note: '#ffffff', noteLine: '#da291c', coin: '#da291c', wings: ['#da291c', '#ec7a70', '#f5b8b2'], text: '#da291c', upper: true },
-  paper: { bg: '#ffffff', note: '#fffaf5', noteLine: '#c1541f', coin: '#c1541f', wings: ['#c1541f', '#dc8e66', '#edc2aa'], text: '#1f1e1c', upper: false },
 };
 
 const icon = (t) => `
