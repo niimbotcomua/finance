@@ -332,6 +332,10 @@ ul.list li.is-me {
 .split-switch input { position: absolute; opacity: 0; pointer-events: none; }
 .split-switch label:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .split-switch::before, .split-switch label { transition: none; } }
+/* «Витрата / Борг» — угорі форми */
+.kind-switch { margin-bottom: 14px; }
+/* Позначка боргу в списку витрат */
+.expense-meta .tag.tag-debt, .tag.tag-debt { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); box-shadow: none; }
 
 /* Нижня панель розділів */
 body.has-tabbar main { padding-bottom: 120px; }

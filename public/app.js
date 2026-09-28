@@ -133,7 +133,11 @@ const avatarUrl = (path) => supabase.storage.from('avatars').getPublicUrl(path).
 /** Кружечок з фото профілю або першою літерою імені. */
 function avatar(profile, size = 'sm') {
   const cls = `avatar avatar-${size}${profile?.id && profile.id === currentUser?.id ? ' avatar-me' : ''}`;
-  if (profile?.avatar_path) return h('img', { class: cls, src: avatarUrl(profile.avatar_path), alt: '' });
+  // Власне фото з застосунку, інакше — фото з Google-акаунта (адмінський список віддає його одразу посиланням).
+  const src = profile?.avatar_path
+    ? (profile.avatar_path.startsWith('https://') ? profile.avatar_path : avatarUrl(profile.avatar_path))
+    : profile?.photo_url;
+  if (src) return h('img', { class: cls, src, alt: '', referrerPolicy: 'no-referrer' });
   return h('span', { class: cls, 'aria-hidden': 'true' }, (profile?.name ?? '?').trim().charAt(0).toUpperCase() || '?');
 }
 
@@ -214,7 +218,7 @@ async function loadCurrentUser() {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return null;
   const [profile, isAdmin, settings] = await Promise.all([
-    run(supabase.from('profiles').select('id, name, email, avatar_path, design, notify_expense_email').eq('id', session.user.id).maybeSingle()),
+    run(supabase.from('profiles').select('id, name, email, avatar_path, photo_url, design, notify_expense_email').eq('id', session.user.id).maybeSingle()),
     run(supabase.rpc('am_i_admin')).catch(() => false),
     run(supabase.from('app_settings').select('design').maybeSingle()).catch(() => null),
   ]);
@@ -433,6 +437,7 @@ async function setAvatar(file) {
   await run(supabase.from('profiles').update({ avatar_path: newPath }).eq('id', currentUser.id));
   if (oldPath) await supabase.storage.from('avatars').remove([oldPath]); // старе фото більше не потрібне
   currentUser.avatar_path = newPath;
+  currentUser.photo_url = null; // фото з Google замінено або видалено
   renderUserbox();
 }
 
@@ -453,13 +458,13 @@ function renderProfile() {
     }
   };
   const uploadButton = h('button', { type: 'button', onClick: () => fileInput.click() },
-    currentUser.avatar_path ? 'Змінити фото' : 'Завантажити фото');
+    currentUser.avatar_path || currentUser.photo_url ? 'Змінити фото' : 'Завантажити фото');
   fileInput.addEventListener('change', () => {
     const [file] = fileInput.files;
     if (file) busy(uploadButton, async () => { await setAvatar(file); toast('Фото оновлено'); });
   });
   photoButtons.append(uploadButton);
-  if (currentUser.avatar_path) {
+  if (currentUser.avatar_path || currentUser.photo_url) {
     const removeButton = h('button', {
       type: 'button',
       class: 'secondary',
@@ -1373,7 +1378,7 @@ async function renderGroups(showArchive = false) {
   const archivedCount = allGroups.filter((g) => g.archived).length;
   // Учасники всіх груп одним запитом — для мініатюр аватарів.
   const memberRows = groups.length === 0 ? [] : await run(supabase.from('group_members')
-    .select('group_id, profiles (id, name, avatar_path)').in('group_id', groups.map((g) => g.id)).order('id'));
+    .select('group_id, profiles (id, name, avatar_path, photo_url)').in('group_id', groups.map((g) => g.id)).order('id'));
   const membersOf = (groupId) => memberRows.filter((r) => r.group_id === groupId && r.profiles).map((r) => r.profiles);
 
   // Плитка групи: натискається вся (посилання розтягнуто на всю плитку); баланс — міткою внизу праворуч.
@@ -1492,7 +1497,7 @@ async function renderGroups(showArchive = false) {
 async function renderGroup(groupId) {
   const [group, memberRows, expenseRows, settlementRows, categories, history, rateRows, viewRows] = await Promise.all([
     run(supabase.from('groups').select('id, name, currency, expense_currency, invite_token, created_by').eq('id', groupId).maybeSingle()),
-    run(supabase.from('group_members').select('user_id, archived_at, profiles (id, name, email, avatar_path)').eq('group_id', groupId).order('id')),
+    run(supabase.from('group_members').select('user_id, archived_at, profiles (id, name, email, avatar_path, photo_url)').eq('group_id', groupId).order('id')),
     run(supabase.from('expenses')
       .select('id, description, amount, paid_by, date, category_id, receipt_path, receipt_path2, currency, original_amount, rate, expense_shares (user_id, amount)')
       .eq('group_id', groupId)
@@ -2369,7 +2374,7 @@ function knownPeopleBlock(group, members, reload) {
   (async () => {
     const people = currentUser.isAdmin
       ? await run(supabase.rpc('admin_users'))
-      : await run(supabase.from('profiles').select('id, name, email, avatar_path').order('name'));
+      : await run(supabase.from('profiles').select('id, name, email, avatar_path, photo_url').order('name'));
     const candidates = people.filter((p) => !memberIds.has(p.id));
     if (candidates.length === 0) return;
     box.replaceChildren(
@@ -2754,6 +2759,30 @@ function expenseFormCard(groupId, members, categories, rates, reload, editing = 
   });
   const receipt = receiptField(editing?.photoUrls ?? []);
 
+  // «Борг»: хто дав гроші і хто йому винен — записується як витрата, де вся сума на тому, хто винен.
+  const startDebt = Boolean(editing && isDebtExpense(editing));
+  const kindSwitch = h('div', { class: 'split-switch kind-switch', role: 'radiogroup', 'aria-label': 'Що записуємо' },
+    [['expense', 'Витрата'], ['debt', 'Борг']].map(([value, label]) =>
+      h('label', {}, h('input', { type: 'radio', name: 'kind', value, checked: (value === 'debt') === startDebt }), label)),
+  );
+  const isDebt = () => kindSwitch.querySelector('input:checked').value === 'debt';
+  const debtorDefault = editing && startDebt ? editing.shares[0].userId
+    : (members.find((m) => m.id !== currentUser.id) ?? members[0])?.id;
+  const debtorField = h('div', { class: 'field' },
+    h('span', { class: 'field-label' }, 'Хто винен'),
+    h('div', { class: 'checks pick' },
+      members.map((m) =>
+        h('label', {}, h('input', {
+          type: 'radio', name: 'debtor', value: String(m.id), checked: m.id === debtorDefault,
+        }), avatar(m, 'xs'), memberName(m)),
+      ),
+    ),
+  );
+  const payerLabel = h('span', { class: 'field-label' }, 'Хто платив');
+  const splitField = h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Як ділити'), splitType);
+  const title = h('h2', {});
+  const submitButton = h('button', { type: 'submit' });
+
   const form = h('form', {},
     receipt.el,
     h('label', {}, 'Опис', descriptionInput),
@@ -2768,7 +2797,7 @@ function expenseFormCard(groupId, members, categories, rates, reload, editing = 
       ),
     ),
     h('div', { class: 'field' },
-      h('span', { class: 'field-label' }, 'Хто платив'),
+      payerLabel,
       h('div', { class: 'checks pick' },
         members.map((m) =>
           h('label', {}, h('input', {
@@ -2777,18 +2806,34 @@ function expenseFormCard(groupId, members, categories, rates, reload, editing = 
         ),
       ),
     ),
-    h('div', { class: 'field' }, h('span', { class: 'field-label' }, 'Як ділити'), splitType),
+    debtorField,
+    splitField,
     equalBox,
     exactBox,
     error,
     editing
       ? h('div', { class: 'row' },
-        h('button', { type: 'submit' }, 'Зберегти зміни'),
+        submitButton,
         h('button', { type: 'button', class: 'secondary', onClick: () => onCancel?.() }, 'Скасувати'),
       )
-      : h('button', { type: 'submit' }, 'Додати витрату'),
+      : submitButton,
   );
+  if (members.length > 1) form.prepend(kindSwitch);
   if (editing) updateShares();
+
+  function updateKind() {
+    const debt = isDebt();
+    debtorField.hidden = !debt;
+    splitField.hidden = debt;
+    equalBox.hidden = debt || splitValue() !== 'equal';
+    exactBox.hidden = debt || splitValue() !== 'exact';
+    payerLabel.textContent = debt ? 'Хто дав гроші' : 'Хто платив';
+    descriptionInput.placeholder = debt ? 'Напр. «Позичив на таксі»' : 'Напр. «Продукти»';
+    title.textContent = editing ? `Редагування: «${editing.description}»` : debt ? 'Новий борг' : 'Нова витрата';
+    submitButton.textContent = editing ? 'Зберегти зміни' : debt ? 'Записати борг' : 'Додати витрату';
+  }
+  kindSwitch.addEventListener('change', updateKind);
+  updateKind();
 
   form.addEventListener('submit', submitHandler(form, error, async (data) => {
     const original = parseMoney(data.get('amount'));
@@ -2798,7 +2843,12 @@ function expenseFormCard(groupId, members, categories, rates, reload, editing = 
     const amount = convertAmount(original, rate); // в основній валюті
 
     let shares;
-    if (data.get('splitType') === 'equal') {
+    if (isDebt()) {
+      const debtor = String(data.get('debtor') ?? '');
+      if (!debtor) throw new Error('Оберіть, хто винен');
+      if (debtor === String(data.get('paidBy'))) throw new Error('Той, хто дав гроші, і той, хто винен, мають бути різними людьми');
+      shares = [{ userId: debtor, amount }];
+    } else if (data.get('splitType') === 'equal') {
       const participants = data.getAll('participant').map(String);
       if (participants.length === 0) throw new Error('Оберіть хоча б одного учасника');
       shares = splitEqually(amount, participants);
@@ -2833,17 +2883,14 @@ function expenseFormCard(groupId, members, categories, rates, reload, editing = 
     else expenseId = await run(supabase.rpc('add_expense', { gid: groupId, ...fields }));
     try {
       await saveReceipt(groupId, expenseId, receipt.state);
-      toast(editing ? 'Зміни збережено' : 'Витрату додано');
+      toast(editing ? 'Зміни збережено' : isDebt() ? 'Борг записано' : 'Витрату додано');
     } catch (err) {
       toast(`Витрату збережено, але фото квитанції — ні: ${err.message}`);
     }
     reload();
   }));
 
-  return h('div', { class: editing ? 'card editing' : 'card' },
-    h('h2', {}, editing ? `Редагування: «${editing.description}»` : 'Нова витрата'),
-    form,
-  );
+  return h('div', { class: editing ? 'card editing' : 'card' }, title, form);
 }
 
 function settlementFormCard(groupId, members, reload) {
@@ -2893,6 +2940,9 @@ function personPill(profile, amount = null) {
 /** Сума без знака валюти («1 000,50») — для колонок, де валюта вказана в заголовку. */
 const formatPlain = (kopecks) => (kopecks / 100).toLocaleString('uk-UA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+/** Борг: один заплатив (позичив) повністю за одного іншого учасника — той йому винен. */
+const isDebtExpense = (e) => e.shares.length === 1 && e.shares[0].userId !== e.paidBy;
+
 /** Частка поточного користувача у витраті (у копійках основної валюти); 0 — не бере участі. */
 const myShareOf = (e) => e.shares.find((s) => s.userId === currentUser.id)?.amount ?? 0;
 
@@ -2934,11 +2984,13 @@ function expensesCard(groupId, allExpenses, profileOf, reload, onEdit, members =
     // Рівний поділ: частки відрізняються щонайбільше на копійку (залишок від ділення).
     const amounts = e.shares.map((s) => s.amount);
     const isEqual = amounts.length > 0 && Math.max(...amounts) - Math.min(...amounts) <= 1;
+    const debt = isDebtExpense(e);
     const details = h('details', { class: 'expense', open: groupUi.openExpenses.has(e.id) },
       h('summary', {},
         h('div', { class: 'expense-main' },
           h('div', { class: 'expense-title' }, e.description),
-          h('div', { class: 'sub' }, formatDate(e.date)),
+          h('div', { class: 'sub' }, formatDate(e.date),
+            debt ? ` · ${profileOf(e.shares[0].userId).name} винен(на) → ${profileOf(e.paidBy).name}` : null),
         ),
         // Колонка «Сума» — в основній валюті (знак у заголовку); для іншої валюти під нею — сума у валюті.
         h('div', { class: 'expense-amount' },
@@ -2948,7 +3000,8 @@ function expensesCard(groupId, allExpenses, profileOf, reload, onEdit, members =
         myShareCell(e),
         h('span', { class: 'chevron', 'aria-hidden': 'true' }, '›'),
         // Теги — окремим рядком на всю ширину, щоб довгі назви вміщались повністю.
-        (e.category || e.photoUrls.some(Boolean) || e.views.length) ? h('div', { class: 'expense-meta' },
+        (debt || e.category || e.photoUrls.some(Boolean) || e.views.length) ? h('div', { class: 'expense-meta' },
+          debt ? h('span', { class: 'tag tag-debt' }, '🤝 Борг') : null,
           e.category ? h('span', { class: 'tag' }, categoryLabel(e.category)) : null,
           e.photoUrls.some(Boolean) ? h('span', { class: 'tag tag-photo', title: 'Є фото' }, `📷 ${e.photoUrls.filter(Boolean).length}`) : null,
           e.views.length ? expenseViewsTag(e, members) : null) : null,
@@ -2956,11 +3009,11 @@ function expensesCard(groupId, allExpenses, profileOf, reload, onEdit, members =
       h('div', { class: 'expense-body' },
         e.photoUrls.some(Boolean) && photoCarousel(e.photoUrls.filter(Boolean).map((src) => ({ src }))),
         h('div', { class: 'field' },
-          h('span', { class: 'field-label' }, 'Хто платив'),
+          h('span', { class: 'field-label' }, debt ? 'Хто дав гроші' : 'Хто платив'),
           h('div', { class: 'pills' }, personPill(profileOf(e.paidBy))),
         ),
         h('div', { class: 'field' },
-          h('span', { class: 'field-label' }, isEqual ? 'Ділили порівну' : 'Ділили точними сумами'),
+          h('span', { class: 'field-label' }, debt ? 'Хто винен' : isEqual ? 'Ділили порівну' : 'Ділили точними сумами'),
           h('div', { class: 'pills' }, e.shares.map((s) => personPill(profileOf(s.userId), s.amount))),
         ),
         e.currency ? h('div', { class: 'sub' },
