@@ -1499,12 +1499,12 @@ async function renderGroup(groupId) {
     run(supabase.from('groups').select('id, name, currency, expense_currency, invite_token, created_by').eq('id', groupId).maybeSingle()),
     run(supabase.from('group_members').select('user_id, archived_at, profiles (id, name, email, avatar_path, photo_url)').eq('group_id', groupId).order('id')),
     run(supabase.from('expenses')
-      .select('id, description, amount, paid_by, date, category_id, receipt_path, receipt_path2, currency, original_amount, rate, expense_shares (user_id, amount)')
+      .select('id, description, amount, paid_by, date, category_id, receipt_path, receipt_path2, currency, original_amount, rate, note, expense_shares (user_id, amount)')
       .eq('group_id', groupId)
       .order('date', { ascending: false })
       .order('id', { ascending: false })),
     run(supabase.from('settlements')
-      .select('id, from_user, to_user, amount, date')
+      .select('id, from_user, to_user, amount, date, note')
       .eq('group_id', groupId)
       .order('date', { ascending: false })
       .order('id', { ascending: false })),
@@ -1548,12 +1548,13 @@ async function renderGroup(groupId) {
     currency: e.currency,
     originalAmount: e.original_amount === null ? null : Number(e.original_amount),
     rate: e.rate === null ? null : Number(e.rate),
+    note: e.note ?? null,
     views: viewRows.filter((v) => v.expense_id === e.id)
       .map((v) => ({ userId: v.user_id, viewedAt: v.viewed_at }))
       .sort((a, b) => a.viewedAt.localeCompare(b.viewedAt)),
   }));
   const settlements = settlementRows.map((s) => ({
-    id: s.id, fromUser: s.from_user, toUser: s.to_user, amount: Number(s.amount), date: s.date,
+    id: s.id, fromUser: s.from_user, toUser: s.to_user, amount: Number(s.amount), date: s.date, note: s.note ?? null,
   }));
   const balanceMap = computeBalances(members.map((m) => m.id), expenses, settlements);
   const balances = [...balanceMap].map(([userId, balance]) => ({ userId, balance }));
@@ -2007,6 +2008,7 @@ function describeChange(entry, nameOf, categoryOf) {
   if (o.paid_by !== n.paid_by) changes.push(`платив(ла): ${nameOf(o.paid_by)} → ${nameOf(n.paid_by)}`);
   if (o.date !== n.date) changes.push(`дата: ${formatDate(o.date)} → ${formatDate(n.date)}`);
   if ((o.category_id ?? null) !== (n.category_id ?? null)) changes.push(`тег: ${tag(o.category_id)} → ${tag(n.category_id)}`);
+  if ((o.note ?? null) !== (n.note ?? null)) changes.push(n.note ? `коментар: «${n.note}»` : 'коментар прибрано');
   if (JSON.stringify(o.shares) !== JSON.stringify(n.shares)) changes.push(`витрати учасників: ${sharesText(o.shares)} → ${sharesText(n.shares)}`);
   return [`змінив(ла) «${o.description}»`, ...changes];
 }
@@ -2643,6 +2645,18 @@ async function saveReceipt(groupId, expenseId, slots) {
 }
 
 /** Форма нової витрати; якщо передано editing — редагування цієї витрати. */
+/** Необов'язковий коментар: згорнутий у посилання «Додати коментар», розгортається в невелике поле. */
+function noteField(initial = '') {
+  const input = h('textarea', { name: 'note', rows: 2, maxLength: 500, placeholder: 'Напр. «Поверне в п\'ятницю»' });
+  input.value = initial ?? '';
+  const box = h('label', { class: 'note-field', hidden: !initial }, 'Коментар', input);
+  const toggle = h('button', {
+    type: 'button', class: 'link note-toggle', hidden: Boolean(initial),
+    onClick: () => { toggle.hidden = true; box.hidden = false; input.focus(); },
+  }, '💬 Додати коментар');
+  return h('div', { class: 'note-wrap' }, toggle, box);
+}
+
 function expenseFormCard(groupId, members, categories, rates, reload, editing = null, onCancel = null, defaultCurrency = null) {
   const error = h('div', { class: 'error' });
 
@@ -2810,6 +2824,7 @@ function expenseFormCard(groupId, members, categories, rates, reload, editing = 
     splitField,
     equalBox,
     exactBox,
+    noteField(editing?.note),
     error,
     editing
       ? h('div', { class: 'row' },
@@ -2877,6 +2892,7 @@ function expenseFormCard(groupId, members, categories, rates, reload, editing = 
       category_id: data.get('category') ? Number(data.get('category')) : null,
       expense_currency: code === baseCurrency ? null : code,
       original_amount: code === baseCurrency ? null : original,
+      note: String(data.get('note') ?? '').trim() || null,
     };
     let expenseId = editing?.id;
     if (editing) await run(supabase.rpc('update_expense', { expense_id: editing.id, ...fields }));
@@ -2908,6 +2924,7 @@ function settlementFormCard(groupId, members, reload) {
       h('label', {}, `Сума, ${currencySymbol(baseCurrency)}`, h('input', { name: 'amount', required: true, inputMode: 'decimal', placeholder: '0,00' })),
       h('label', {}, 'Дата', h('input', { name: 'date', type: 'date', value: today() })),
     ),
+    noteField(),
     error,
     h('button', { type: 'submit' }, 'Записати переказ'),
   );
@@ -2923,6 +2940,7 @@ function settlementFormCard(groupId, members, reload) {
       to_user: toUser,
       amount,
       date: data.get('date') || today(),
+      note: String(data.get('note') ?? '').trim() || null,
     }));
     toast('Переказ записано');
     reload();
@@ -3000,14 +3018,16 @@ function expensesCard(groupId, allExpenses, profileOf, reload, onEdit, members =
         myShareCell(e),
         h('span', { class: 'chevron', 'aria-hidden': 'true' }, '›'),
         // Теги — окремим рядком на всю ширину, щоб довгі назви вміщались повністю.
-        (debt || e.category || e.photoUrls.some(Boolean) || e.views.length) ? h('div', { class: 'expense-meta' },
+        (debt || e.note || e.category || e.photoUrls.some(Boolean) || e.views.length) ? h('div', { class: 'expense-meta' },
           debt ? h('span', { class: 'tag tag-debt' }, '🤝 Борг') : null,
+          e.note ? h('span', { class: 'tag tag-note', title: e.note }, '💬') : null,
           e.category ? h('span', { class: 'tag' }, categoryLabel(e.category)) : null,
           e.photoUrls.some(Boolean) ? h('span', { class: 'tag tag-photo', title: 'Є фото' }, `📷 ${e.photoUrls.filter(Boolean).length}`) : null,
           e.views.length ? expenseViewsTag(e, members) : null) : null,
       ),
       h('div', { class: 'expense-body' },
         e.photoUrls.some(Boolean) && photoCarousel(e.photoUrls.filter(Boolean).map((src) => ({ src }))),
+        e.note ? h('div', { class: 'note-text' }, `💬 ${e.note}`) : null,
         h('div', { class: 'field' },
           h('span', { class: 'field-label' }, debt ? 'Хто дав гроші' : 'Хто платив'),
           h('div', { class: 'pills' }, personPill(profileOf(e.paidBy))),
@@ -3145,6 +3165,7 @@ function settlementsCard(groupId, settlements, nameOf, reload) {
           h('div', {},
             h('div', {}, `${nameOf(s.fromUser)} → ${nameOf(s.toUser)}`),
             h('div', { class: 'sub' }, formatDate(s.date)),
+            s.note ? h('div', { class: 'note-text' }, `💬 ${s.note}`) : null,
           ),
           h('div', { class: 'actions' },
             h('span', { class: 'amount' }, formatMoney(s.amount)),

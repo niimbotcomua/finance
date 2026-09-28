@@ -712,3 +712,26 @@ test('фото з Google: береться під час реєстрації, �
   await db.query('update auth.users set raw_user_meta_data = $1 where id = $2', [{ name: 'Пошта', picture: photo + '2' }, users.linked]);
   assert.equal(await linked(), null);
 });
+
+test('коментар до витрати й повернення боргу: необов\'язковий, зберігається й редагується', async () => {
+  const [{ create_group: gid }] = await as('anna', 'select public.create_group($1)', ['Коментарі']);
+  await as('anna', 'select public.add_group_member($1, $2)', [gid, 'bohdan@example.com']);
+  const shares = JSON.stringify([{ user_id: users.bohdan, amount: 500 }]);
+  const [{ add_expense: plain }] = await as('anna', 'select public.add_expense(gid => $1, description => $2, amount => 500, paid_by => $3, shares => $4)',
+    [gid, 'Таксі', users.anna, shares]);
+  const [{ add_expense: eid }] = await as('anna', 'select public.add_expense(gid => $1, description => $2, amount => 500, paid_by => $3, shares => $4, note => $5)',
+    [gid, 'Таксі', users.anna, shares, '  Поверне в п\'ятницю  ']);
+  const note = async (id) => (await as('bohdan', 'select note from public.expenses where id = $1', [id]))[0].note;
+  assert.equal(await note(plain), null);
+  assert.equal(await note(eid), 'Поверне в п\'ятницю');
+  await as('bohdan', 'select public.update_expense(expense_id => $1, description => $2, amount => 500, paid_by => $3, shares => $4, expense_date => null, note => $5)',
+    [eid, 'Таксі', users.anna, shares, ' ']);
+  assert.equal(await note(eid), null);
+  const [h] = await as('anna', "select old_data ->> 'note' as old from public.expense_history where expense_id = $1 and action = 'updated'", [eid]);
+  assert.equal(h.old, 'Поверне в п\'ятницю');
+  await rejects(as('anna', 'select public.add_expense(gid => $1, description => $2, amount => 500, paid_by => $3, shares => $4, note => $5)',
+    [gid, 'Таксі', users.anna, shares, 'x'.repeat(501)]), 'expenses_note_check');
+  const [s] = await as('bohdan', 'insert into public.settlements (group_id, from_user, to_user, amount, note) values ($1, $2, $3, 500, $4) returning note',
+    [gid, users.bohdan, users.anna, 'Готівкою']);
+  assert.equal(s.note, 'Готівкою');
+});
