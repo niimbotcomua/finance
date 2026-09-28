@@ -869,19 +869,35 @@ async function renderAdmin() {
           u.notify_expense_email && h('span', { class: 'tag ok', title: 'Отримує листи про нові витрати' }, '📧 Листи')),
       ),
     ),
-    u.id !== currentUser.id && h('button', {
-      class: 'secondary',
-      onClick: async () => {
-        const question = u.is_admin ? `Забрати в ${u.name} права адміністратора?` : `Зробити ${u.name} адміністратором?`;
-        if (!confirm(question)) return;
-        try {
-          await run(supabase.rpc('admin_set_admin', { target: u.id, make_admin: !u.is_admin }));
-          reload();
-        } catch (err) {
-          toast(err.message);
-        }
-      },
-    }, u.is_admin ? 'Забрати адміна' : 'Зробити адміном'),
+    u.id !== currentUser.id && h('div', { class: 'user-actions' },
+      h('button', {
+        class: 'secondary',
+        onClick: async () => {
+          const question = u.is_admin ? `Забрати в ${u.name} права адміністратора?` : `Зробити ${u.name} адміністратором?`;
+          if (!confirm(question)) return;
+          try {
+            await run(supabase.rpc('admin_set_admin', { target: u.id, make_admin: !u.is_admin }));
+            reload();
+          } catch (err) {
+            toast(err.message);
+          }
+        },
+      }, u.is_admin ? 'Забрати адміна' : 'Зробити адміном'),
+      // Видалити можна лише того, хто ще нічого не робив: без груп і витрат (перевіряє й база).
+      !u.is_admin && Number(u.group_count) === 0 && Number(u.expense_count) === 0 && h('button', {
+        class: 'secondary danger',
+        onClick: async () => {
+          if (!confirm(`Видалити користувача ${u.name} (${u.email}) назавжди? Він зможе зареєструватися знову.`)) return;
+          try {
+            await run(supabase.rpc('admin_delete_user', { target: u.id }));
+            toast('Користувача видалено');
+            reload();
+          } catch (err) {
+            toast(err.message);
+          }
+        },
+      }, 'Видалити'),
+    ),
   );
 
   // Валюта, яку форма «Нова група» пропонує першою.

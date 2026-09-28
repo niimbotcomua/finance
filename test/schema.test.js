@@ -851,3 +851,20 @@ test('баланси в базі (список груп) збігаються з
   await db.query('delete from public.expenses where group_id = $1', [gid]);
   await db.query('delete from public.groups where id = $1', [gid]);
 });
+
+test('Адмінка: видалення користувача без груп і витрат', async () => {
+  await db.query('insert into private.admins (user_id) values ($1) on conflict do nothing', [users.anna]);
+  await signUp('zoya', 'zoya@example.com', 'Зоя');
+  const del = (who, target) => as(who, 'select public.admin_delete_user($1)', [target]);
+
+  await rejects(del('vira', users.zoya), 'адміністратора');
+  await rejects(del('anna', users.anna), 'самого себе');
+  await rejects(del('anna', users.bohdan), 'має групи або витрати');
+  await db.query('insert into private.admins (user_id) values ($1)', [users.zoya]);
+  await rejects(del('anna', users.zoya), 'права адміністратора');
+  await db.query('delete from private.admins where user_id = $1', [users.zoya]);
+
+  await del('anna', users.zoya);
+  assert.equal((await db.query('select count(*)::int as n from public.profiles where id = $1', [users.zoya])).rows[0].n, 0);
+  assert.equal((await db.query('select count(*)::int as n from auth.users where id = $1', [users.zoya])).rows[0].n, 0);
+});
