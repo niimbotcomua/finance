@@ -744,6 +744,7 @@ document.addEventListener('click', (e) => {
   if (!e.target.closest?.('.icon-picker')) document.querySelectorAll('.icon-grid').forEach((g) => { g.hidden = true; });
 });
 
+const PRESENTATION_URL = '/files/spilni-vytraty-prezentatsiia.pdf';
 const dateTime = (value) => new Date(value).toLocaleString('uk-UA', { dateStyle: 'short', timeStyle: 'short' });
 
 /** Адмінка: чи підключено Telegram-бота і чи доходять туди сповіщення про витрати. */
@@ -931,6 +932,14 @@ async function renderAdmin() {
   mount(
     h('p', {}, h('a', { href: '#/' }, '← Усі групи')),
     h('h1', {}, 'Адмінка'),
+    h('div', { class: 'card' },
+      h('h2', {}, 'Презентація'),
+      h('p', { class: 'sub' }, 'PDF про застосунок — для партнерів і нових користувачів.'),
+      h('button', {
+        type: 'button',
+        onClick: () => h('a', { href: PRESENTATION_URL, download: 'spilni-vytraty-prezentatsiia.pdf' }).click(),
+      }, '⬇️ Завантажити презентацію (PDF)'),
+    ),
     brandingCard,
     h('div', { class: 'card' },
       h('h2', {}, 'Дизайн'),
