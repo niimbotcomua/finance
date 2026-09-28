@@ -601,6 +601,41 @@ test('Telegram: прив\'язка через бота і сповіщення �
   assert.equal((await db.query('select count(*)::int as n from net.sent')).rows[0].n, 0);
 });
 
+test('Telegram: сповіщення з фото квитанцій через функцію notify-telegram', async () => {
+  const [{ webhook_secret: secret }] = (await db.query('select webhook_secret from private.telegram_bot')).rows;
+  const [{ telegram_link_start: link }] = await as('bohdan', 'select public.telegram_link_start()');
+  await db.query('select public.telegram_webhook($1, $2::jsonb)',
+    [secret, JSON.stringify({ message: { chat: { id: 555, type: 'private' }, text: `/start ${link.split('=')[1]}` } })]);
+
+  // Адресу функції вмикає лише адмін бази; після цього база лише «штовхає» функцію номером витрати.
+  await rejects(as('bohdan', "select private.telegram_notify_setup('https://evil.example')"), 'permission denied');
+  await db.query("select private.telegram_notify_setup('https://example.com/functions/v1/notify-telegram')");
+  await db.exec('delete from net.sent');
+  const [{ create_group: gid }] = await as('anna', 'select public.create_group($1)', ['Кафе']);
+  await as('anna', 'select public.add_group_member($1, $2)', [gid, 'bohdan@example.com']);
+  const [{ add_expense: eid }] = await as('anna',
+    'select public.add_expense(gid => $1, description => $2, amount => 5000, paid_by => $3, shares => $4::jsonb, note => $5)',
+    [gid, 'Обід', users.anna, JSON.stringify([{ user_id: users.anna, amount: 2500 }, { user_id: users.bohdan, amount: 2500 }]), 'Чек <у чаті>']);
+  const sent = (await db.query("select url, body from net.sent where url not like '%notify-expense'")).rows;
+  assert.deepEqual(sent, [{ url: 'https://example.com/functions/v1/notify-telegram', body: { expense_id: eid } }]);
+
+  // Фото прикріпили після створення — функція отримує їх разом із текстами й кнопками.
+  await as('anna', 'select public.set_expense_photo($1, 1, $2)', [eid, `${gid}/a.jpg`]);
+  await as('anna', 'select public.set_expense_photo($1, 2, $2)', [eid, `${gid}/b.jpg`]);
+  await rejects(as('bohdan', 'select public.telegram_expense_notification($1, $2)', [secret, eid]), 'permission denied');
+  await rejects(db.query('select public.telegram_expense_notification($1, $2)', ['wrong', eid]), 'forbidden');
+  const [{ n }] = (await db.query('select public.telegram_expense_notification($1, $2) as n', [secret, eid])).rows;
+  assert.equal(n.token, '123:ABC');
+  assert.deepEqual(n.photos, [`${gid}/a.jpg`, `${gid}/b.jpg`]);
+  assert.equal(n.buttons.inline_keyboard[0][0].url, `https://finance.chinnect24.com/#/groups/${gid}/expenses/${eid}`);
+  assert.equal(n.messages.length, 1);
+  assert.equal(n.messages[0].chat_id, 555);
+  assert.match(n.messages[0].text, /\n💬 <i>Чек &lt;у чаті&gt;<\/i>\n\n<blockquote>🫵 Ваша витрата: <b>25,00 грн<\/b>/);
+
+  await db.query("select private.telegram_notify_setup('')");
+  assert.equal((await db.query('select notify_url from private.telegram_bot')).rows[0].notify_url, null);
+});
+
 test('Пошта: сповіщення про нову витрату лише тим, хто ввімкнув', async () => {
   // net.http_post уже підмінено в тесті Telegram (запис у net.sent).
   await db.exec('delete from net.sent');
