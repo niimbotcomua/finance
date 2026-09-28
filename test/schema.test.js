@@ -685,3 +685,30 @@ test('валюта для нових витрат у групі: основна 
   await setDefault('anna', 'UAH');
   assert.equal(await current(), null);
 });
+
+test('фото з Google: береться під час реєстрації, власне фото чи видалення його прибирає', async () => {
+  const photo = 'https://lh3.googleusercontent.com/a/abc=s96-c';
+  const { rows: [{ id }] } = await db.query(
+    'insert into auth.users (email, raw_user_meta_data) values ($1, $2) returning id',
+    ['gmail@example.com', { name: 'Гугл', avatar_url: photo }]);
+  users.google = id;
+  const profile = async () => (await as('google', 'select avatar_path, photo_url from public.profiles where id = $1', [id]))[0];
+  assert.deepEqual(await profile(), { avatar_path: null, photo_url: photo });
+  // Завантажив своє фото — Google-фото більше не показуємо.
+  await as('google', 'update public.profiles set avatar_path = $1 where id = $2', [`${id}/1.jpg`, id]);
+  assert.deepEqual(await profile(), { avatar_path: `${id}/1.jpg`, photo_url: null });
+  // Сам змінити photo_url не може.
+  await rejects(as('google', 'update public.profiles set photo_url = $1 where id = $2', [photo, id]), 'permission denied');
+
+  // Акаунт з пошти, потім уперше увійшов через Google — фото підставляється; «Видалити фото» його прибирає.
+  await signUp('linked', 'linked@example.com', 'Пошта');
+  const linked = async () => (await db.query('select photo_url from public.profiles where id = $1', [users.linked])).rows[0].photo_url;
+  assert.equal(await linked(), null);
+  await db.query('update auth.users set raw_user_meta_data = $1 where id = $2', [{ name: 'Пошта', picture: photo }, users.linked]);
+  assert.equal(await linked(), photo);
+  await as('linked', 'update public.profiles set avatar_path = null where id = $1', [users.linked]);
+  assert.equal(await linked(), null);
+  // Наступний вхід через Google фото не повертає.
+  await db.query('update auth.users set raw_user_meta_data = $1 where id = $2', [{ name: 'Пошта', picture: photo + '2' }, users.linked]);
+  assert.equal(await linked(), null);
+});
