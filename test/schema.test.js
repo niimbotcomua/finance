@@ -568,7 +568,7 @@ test('Telegram: прив\'язка через бота і сповіщення �
   assert.match((await webhook(secret, `/start ${code}`)).text, /застаріло/); // код одноразовий
   assert.deepEqual(await as('bohdan', 'select * from public.telegram_status()'), [{ bot_username: 'spilni_bot', linked: true }]);
 
-  // Анна додає витрату — Богдан отримує повідомлення, сама Анна й чужі — ні.
+  // Анна додає витрату — Богдан отримує повідомлення; Анна Telegram не підключала, чужі групи — ні.
   await db.exec('delete from net.sent');
   const [{ create_group: gid }] = await as('anna', 'select public.create_group($1)', ['Відпустка']);
   await as('anna', 'select public.add_group_member($1, $2)', [gid, 'bohdan@example.com']);
@@ -630,7 +630,19 @@ test('Telegram: сповіщення з фото квитанцій через �
   assert.equal(n.buttons.inline_keyboard[0][0].url, `https://finance.chinnect24.com/#/groups/${gid}/expenses/${eid}`);
   assert.equal(n.messages.length, 1);
   assert.equal(n.messages[0].chat_id, 555);
+  assert.match(n.messages[0].text, /^💸 <b>Нова витрата<\/b> · Кафе\n/);
   assert.match(n.messages[0].text, /\n💬 <i>Чек &lt;у чаті&gt;<\/i>\n\n<blockquote>🫵 Ваша витрата: <b>25,00 грн<\/b>/);
+
+  // Авторка витрати з підключеним Telegram теж отримує повідомлення — як підтвердження.
+  const [{ telegram_link_start: annaLink }] = await as('anna', 'select public.telegram_link_start()');
+  await db.query('select public.telegram_webhook($1, $2::jsonb)',
+    [secret, JSON.stringify({ message: { chat: { id: 777, type: 'private' }, text: `/start ${annaLink.split('=')[1]}` } })]);
+  const [{ n: both }] = (await db.query('select public.telegram_expense_notification($1, $2) as n', [secret, eid])).rows;
+  const anna = both.messages.find((m) => m.chat_id === 777);
+  assert.equal(both.messages.length, 2);
+  assert.match(anna.text, /^✅ <b>Ви додали витрату<\/b> · Кафе\n/);
+  assert.match(anna.text, /<blockquote>🫵 Ваша витрата: <b>25,00 грн<\/b>/);
+  assert.doesNotMatch(anna.text, /Додав\(ла\)/);
 
   await db.query("select private.telegram_notify_setup('')");
   assert.equal((await db.query('select notify_url from private.telegram_bot')).rows[0].notify_url, null);
