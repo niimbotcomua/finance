@@ -21,6 +21,6 @@ test('SEO: теги з налаштувань підставляються в с
 test('SEO: без налаштувань — типові тексти й картинка сайту', () => {
   const page = renderPage(html, null, options);
   assert.match(page, /<title>Спільні витрати/);
-  assert.match(page, /<meta property="og:image" content="https:\/\/example\.com\/og\.png">/);
+  assert.match(page, /<meta property="og:image" content="https:\/\/example\.com\/og\.png\?v=2">/);
   assert.match(page, /data-design="nova"/);
 });

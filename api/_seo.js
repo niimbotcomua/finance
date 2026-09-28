@@ -22,7 +22,7 @@ export function seoTags(meta, { origin, supabaseUrl }) {
   const m = { ...DEFAULT_META, ...Object.fromEntries(Object.entries(meta ?? {}).filter(([, v]) => v)) };
   const title = escapeHtml(m.site_title);
   const description = escapeHtml(m.site_description);
-  const image = escapeHtml(m.og_image_path ? brandingUrl(supabaseUrl, m.og_image_path) : `${origin}/og.png`);
+  const image = escapeHtml(m.og_image_path ? brandingUrl(supabaseUrl, m.og_image_path) : `${origin}/og.png?v=2`);
   const url = escapeHtml(`${origin}/`);
   return [
     `<title>${title}</title>`,
