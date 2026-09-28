@@ -1,0 +1,37 @@
+<!doctype html>
+<!-- Джерело картинки-прев'ю для соцмереж (public/og.png, 1200×630): банер з персонажем як на головній.
+     Перегенерувати: node branding/og/render.mjs -->
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; }
+  body { width: 1200px; height: 630px; overflow: hidden; font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+  .hero {
+    position: relative; box-sizing: border-box; width: 1200px; height: 630px; color: #fff;
+    display: grid; grid-template-columns: 500px 1fr; align-items: center; gap: 8px;
+    padding: 0 40px 0 72px;
+    background:
+      radial-gradient(circle at 96% 4%, rgb(255 255 255 / 0.14) 0 150px, transparent 151px),
+      radial-gradient(circle at 6% 96%, rgb(255 255 255 / 0.1) 0 180px, transparent 181px),
+      linear-gradient(160deg, #ef3a2b 0%, #c41f13 100%);
+  }
+  .logo { display: inline-block; background: #fff; border-radius: 10px; padding: 10px 16px; margin-bottom: 34px; }
+  .logo img { display: block; height: 44px; }
+  h1 { margin: 0 0 20px; font-size: 68px; line-height: 1.05; font-weight: 900; letter-spacing: -0.02em; }
+  p { margin: 0; font-size: 26px; line-height: 1.4; opacity: 0.94; }
+  .art { width: 100%; height: auto; display: block;
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent); mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent); }
+</style>
+</head>
+<body>
+  <div class="hero">
+    <div>
+      <div class="logo"><img src="../../public/logos/nova.png" alt=""></div>
+      <h1>Рахуйте разом.<br>Діліть чесно.</h1>
+      <p>Поїздки, квартира, вечірки — додавайте витрати, а ми порахуємо, хто кому скільки винен.</p>
+    </div>
+    <img class="art" src="../../public/img/city-walk.svg" alt="">
+  </div>
+</body>
+</html>
