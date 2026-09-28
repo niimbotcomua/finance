@@ -665,6 +665,15 @@ test('Telegram: сповіщення з фото квитанцій через �
   await db.query('select public.telegram_report_delivery($1, 777, true)', [secret]);
   assert.equal((await as('anna', 'select * from public.admin_notify_status()')).find((u) => u.user_id === users.anna).telegram_error, null);
 
+  // Новий користувач — повідомлення лише адмінам із Telegram (Анна — адмін, Богдан — ні).
+  await db.exec('delete from net.sent');
+  await signUp('yurii', 'yurii@example.com', 'Юрій <Ю>');
+  const hello = (await db.query("select body from net.sent where url like '%/sendMessage'")).rows.map((r) => r.body);
+  assert.deepEqual(hello.map((b) => b.chat_id), [777]);
+  assert.match(hello[0].text, /^🎉 <b>Новий користувач<\/b>\n\n👤 <b>Юрій &lt;Ю&gt;<\/b>\n📧 yurii@example\.com\n/);
+  assert.match(hello[0].text, /👥 Усього користувачів: <b>\d+<\/b>$/);
+  assert.equal(hello[0].reply_markup.inline_keyboard[0][0].url, 'https://finance.chinnect24.com/#/admin');
+
   await db.query("select private.telegram_notify_setup('')");
   assert.equal((await db.query('select notify_url from private.telegram_bot')).rows[0].notify_url, null);
 });
