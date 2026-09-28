@@ -79,6 +79,7 @@ export function filterExpenses(expenses, filter, ctx, todayIso) {
     if (filter.onlyMine && !e.shares.some((s) => s.userId === ctx.meId && s.amount > 0) && e.paidBy !== ctx.meId) return false;
     return matches(filter.query, [
       e.description,
+      e.note ?? '',
       e.categoryId ? ctx.categoryName(e.categoryId) : '',
       ctx.nameOf(e.paidBy),
       ...amountVariants(e.amount),
