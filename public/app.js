@@ -2595,6 +2595,7 @@ function receiptField(existingUrls) {
       if (files.length > free.length) toast(`Можна додати ще ${free.length} фото — зайві пропущено`);
       files.slice(0, free.length).forEach((file, i) => {
         free[i].file = file;
+        free[i].uploadedPath = null;
         free[i].removed = false;
       });
       open = true;
@@ -2639,6 +2640,7 @@ function receiptField(existingUrls) {
         src: imageOf(slot),
         onRemove: () => {
           slot.file = null;
+          slot.uploadedPath = null;
           slot.removed = true;
           render();
         },
@@ -2654,16 +2656,23 @@ function receiptField(existingUrls) {
   return { el: box, state: slots };
 }
 
+/** Завантажує нові фото у сховище (ще без прив'язки до витрати). */
+async function uploadReceipts(groupId, slots) {
+  for (const slot of slots) {
+    if (!slot.file || slot.uploadedPath) continue;
+    const path = `${groupId}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.jpg`;
+    await run(supabase.storage.from('receipts').upload(path, await scaledJpeg(slot.file), { contentType: 'image/jpeg' }));
+    slot.uploadedPath = path;
+  }
+}
+
 /** Зберігає зміни фото витрати: завантажує нові, прибирає видалені; старі файли видаляє зі сховища. */
 async function saveReceipt(groupId, expenseId, slots) {
+  await uploadReceipts(groupId, slots);
   const oldPaths = [];
   for (const [i, slot] of slots.entries()) {
     if (!slot.file && !slot.removed) continue;
-    let path = null;
-    if (slot.file) {
-      path = `${groupId}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.jpg`;
-      await run(supabase.storage.from('receipts').upload(path, await scaledJpeg(slot.file), { contentType: 'image/jpeg' }));
-    }
+    const path = slot.file ? slot.uploadedPath : null;
     const oldPath = await run(supabase.rpc('set_expense_photo', { expense_id: expenseId, slot: i + 1, photo_path: path }));
     if (oldPath) oldPaths.push(oldPath);
   }
@@ -2921,9 +2930,22 @@ function expenseFormCard(groupId, members, categories, rates, reload, editing = 
       note: String(data.get('note') ?? '').trim() || null,
     };
     let expenseId = editing?.id;
+    // Нові фото — ще до створення витрати: тоді бот у Telegram надішле їх разом зі сповіщенням.
+    let uploadError = null;
+    if (!editing) await uploadReceipts(groupId, receipt.state).catch((err) => { uploadError = err; });
     if (editing) await run(supabase.rpc('update_expense', { expense_id: editing.id, ...fields }));
-    else expenseId = await run(supabase.rpc('add_expense', { gid: groupId, ...fields }));
+    else {
+      try {
+        expenseId = await run(supabase.rpc('add_expense', { gid: groupId, ...fields }));
+      } catch (err) {
+        const orphans = receipt.state.map((slot) => slot.uploadedPath).filter(Boolean);
+        if (orphans.length > 0) await supabase.storage.from('receipts').remove(orphans);
+        receipt.state.forEach((slot) => { slot.uploadedPath = null; });
+        throw err;
+      }
+    }
     try {
+      if (uploadError) throw uploadError;
       await saveReceipt(groupId, expenseId, receipt.state);
       toast(editing ? 'Зміни збережено' : isDebt() ? 'Борг записано' : 'Витрату додано');
     } catch (err) {
