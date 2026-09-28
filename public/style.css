@@ -848,3 +848,12 @@ button.tg-connect .tg-icon svg path:first-of-type, button.tg-connect .tg-icon sv
 .notify-tags .tag { margin-left: 0; }
 .tag.ok { color: var(--positive); }
 .tag.bad { color: var(--negative); }
+
+/* Адмінка: список користувачів — на вузькому екрані кнопка переноситься під дані, текст не вилазить */
+ul.list li.user-row { flex-wrap: wrap; }
+.user-row .person { flex: 1 1 240px; align-items: flex-start; }
+.user-row .user-info { min-width: 0; }
+.user-email { overflow-wrap: anywhere; }
+@media (max-width: 600px) {
+  .user-row > button.secondary { margin-left: 50px; }
+}

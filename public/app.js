@@ -856,13 +856,14 @@ async function renderAdmin() {
     return h('li', {}, form);
   };
 
-  const userRow = (u) => h('li', {},
+  const userRow = (u) => h('li', { class: 'user-row' },
     h('div', { class: 'person' },
       avatar(u),
-      h('div', {},
+      h('div', { class: 'user-info' },
         h('div', {}, u.name, u.is_admin ? h('span', { class: 'badge' }, 'адмін') : null),
+        h('div', { class: 'sub user-email' }, u.email),
         h('div', { class: 'sub' },
-          `${u.email} · з ${new Date(u.created_at).toLocaleDateString('uk-UA')} · груп: ${u.group_count} · витрат: ${u.expense_count}`),
+          `з ${new Date(u.created_at).toLocaleDateString('uk-UA')} · груп: ${u.group_count} · витрат: ${u.expense_count}`),
         h('div', { class: 'notify-tags' }, telegramTag(u),
           u.notify_expense_email && h('span', { class: 'tag ok', title: 'Отримує листи про нові витрати' }, '📧 Листи')),
       ),
