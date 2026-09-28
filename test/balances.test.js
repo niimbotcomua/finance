@@ -65,3 +65,50 @@ test('перерахунок валюти: частки в сумі дають �
   const back = convertShares(converted, 1 / 41.1234, 1000);
   assert.deepEqual(back.map((x) => x.amount), [333, 333, 334]);
 });
+
+// Випадкові сценарії (з фіксованим зерном, щоб тест був відтворюваним): гроші не «губляться» ні на копійку.
+test('перевірка на тисячах випадкових сценаріїв: поділ, валюта, баланси, спрощення боргів', async () => {
+  const { convertAmount, convertShares } = await import('../public/balances.js');
+  let seed = 7;
+  const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+  const ri = (a, b) => a + Math.floor(rnd() * (b - a + 1));
+  const total = (list) => list.reduce((s, x) => s + x.amount, 0);
+  const rates = [41.25, 44.8712, 0.0123, 1.1, 9.87654321, 0.3333, 3, 26.95];
+  for (let t = 0; t < 20000; t++) {
+    const ids = Array.from({ length: ri(1, 10) }, (_, i) => `u${i}`);
+    const amount = ri(1, 1e9);
+    const equal = splitEqually(amount, ids);
+    assert.equal(total(equal), amount);
+    assert.ok(Math.max(...equal.map((s) => s.amount)) - Math.min(...equal.map((s) => s.amount)) <= 1);
+
+    // Витрата в іншій валюті «точними сумами»: частки в основній валюті дають рівно перераховану суму,
+    // кожна — не далі копійки від точного значення, а повторне збереження без змін нічого не зсуває.
+    const rate = rates[ri(0, rates.length - 1)];
+    const original = ri(100, 1e7);
+    const base = convertAmount(original, rate);
+    let left = original;
+    const shares = ids.map((userId, i) => {
+      const v = i === ids.length - 1 ? left : ri(0, left);
+      left -= v;
+      return { userId, amount: v };
+    });
+    const converted = convertShares(shares, rate, base);
+    assert.equal(total(converted), base);
+    converted.forEach((s, i) => assert.ok(Math.abs(s.amount - shares[i].amount * rate) <= 1.000001 && s.amount >= 0));
+    const back = convertShares(converted, 1 / rate, original);
+    assert.equal(total(back), original);
+    assert.deepEqual(convertShares(back, rate, base), converted);
+
+    // Баланси завжди в сумі нуль; запропоновані перекази повністю розраховують групу.
+    const expenses = Array.from({ length: ri(1, 6) }, () => {
+      const a = ri(1, 1e6);
+      return { paidBy: ids[ri(0, ids.length - 1)], amount: a, shares: splitEqually(a, ids.slice(0, ri(1, ids.length))) };
+    });
+    const balances = computeBalances(ids, expenses, []);
+    assert.equal([...balances.values()].reduce((a, b) => a + b, 0), 0);
+    const transfers = simplifyDebts(balances);
+    assert.ok(transfers.length <= Math.max(ids.length - 1, 0));
+    const settled = computeBalances(ids, expenses, transfers.map((x) => ({ fromUser: x.from, toUser: x.to, amount: x.amount })));
+    assert.ok([...settled.values()].every((v) => v === 0));
+  }
+});

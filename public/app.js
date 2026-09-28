@@ -115,7 +115,11 @@ function parseRate(value) {
 }
 const formatRate = (rate) => Number(rate).toLocaleString('uk-UA', { maximumFractionDigits: 6 });
 const formatDate = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString('uk-UA');
-const today = () => new Date().toISOString().slice(0, 10);
+/** Сьогоднішня дата за годинником користувача (не UTC: інакше з 00:00 до 03:00 за Києвом була б «учора»). */
+const today = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
 
 /** "12,50" → 1250 копійок; null, якщо некоректно. */
 function parseMoney(value) {
@@ -167,6 +171,11 @@ const ERROR_TRANSLATIONS = {
   'is invalid or has expired': 'Посилання з листа недійсне або застаріло — запросіть новий лист',
   'rate limit': 'Забагато спроб, спробуйте трохи пізніше',
   'row-level security': 'Недостатньо прав для цієї дії',
+  'expenses_amount_check': 'Сума завелика: не більше 1 000 000 000 в основній валюті',
+  'settlements_amount_check': 'Сума завелика: не більше 1 000 000 000',
+  'expenses_currency_check': 'Сума у валюті завелика',
+  'note_check': 'Коментар задовгий: не більше 500 символів',
+  'expense_shares_pkey': 'Учасника вказано двічі',
 };
 
 function translateError(message = '') {
@@ -179,6 +188,19 @@ async function run(request) {
   const { data, error } = await request;
   if (error) throw new Error(translateError(error.message));
   return data;
+}
+
+/**
+ * Усі рядки запиту, сторінками по 1000: сервер за один раз віддає не більше 1000 рядків,
+ * а баланси мають рахуватися за всіма витратами групи. makeQuery() щоразу створює новий запит із сортуванням.
+ */
+async function runAll(makeQuery, pageSize = 1000) {
+  const rows = [];
+  for (let from = 0; ; from += pageSize) {
+    const page = await run(makeQuery().range(from, from + pageSize - 1));
+    rows.push(...page);
+    if (page.length < pageSize) return rows;
+  }
 }
 
 // Запрошення, яке треба прийняти після входу (переживає реєстрацію та перехід за посиланням з листа).
@@ -1498,12 +1520,12 @@ async function renderGroup(groupId) {
   const [group, memberRows, expenseRows, settlementRows, categories, history, rateRows, viewRows] = await Promise.all([
     run(supabase.from('groups').select('id, name, currency, expense_currency, invite_token, created_by').eq('id', groupId).maybeSingle()),
     run(supabase.from('group_members').select('user_id, archived_at, profiles (id, name, email, avatar_path, photo_url)').eq('group_id', groupId).order('id')),
-    run(supabase.from('expenses')
+    runAll(() => supabase.from('expenses')
       .select('id, description, amount, paid_by, date, category_id, receipt_path, receipt_path2, currency, original_amount, rate, note, expense_shares (user_id, amount)')
       .eq('group_id', groupId)
       .order('date', { ascending: false })
       .order('id', { ascending: false })),
-    run(supabase.from('settlements')
+    runAll(() => supabase.from('settlements')
       .select('id, from_user, to_user, amount, date, note')
       .eq('group_id', groupId)
       .order('date', { ascending: false })
@@ -1516,7 +1538,8 @@ async function renderGroup(groupId) {
       .limit(200)),
     run(supabase.from('group_rates').select('currency, rate, updated_at').eq('group_id', groupId)),
     // Хто переглянув витрати (міграція 024); без неї — просто без позначок.
-    run(supabase.from('expense_views').select('expense_id, user_id, viewed_at, expenses!inner(group_id)').eq('expenses.group_id', groupId))
+    runAll(() => supabase.from('expense_views').select('expense_id, user_id, viewed_at, expenses!inner(group_id)').eq('expenses.group_id', groupId)
+      .order('expense_id').order('user_id'))
       .catch(() => []),
     loadCurrencies(),
   ]);
@@ -2000,6 +2023,8 @@ function describeChange(entry, nameOf, categoryOf) {
   const money = (v) => formatMoney(Number(v));
   const tag = (id) => (id ? (categoryOf(id) ? categoryLabel(categoryOf(id)) : 'видалений тег') : 'без тегу');
   const sharesText = (shares = []) => shares.map((x) => `${nameOf(x.user_id)} ${money(x.amount)}`).join(', ') || '—';
+  if (entry.action === 'settled') return [`записав(ла) повернення боргу: ${nameOf(n.from_user)} → ${nameOf(n.to_user)} — ${money(n.amount)}`];
+  if (entry.action === 'unsettled') return [`скасував(ла) повернення боргу: ${nameOf(o.from_user)} → ${nameOf(o.to_user)} — ${money(o.amount)}`];
   if (entry.action === 'created') return [`додав(ла) «${n.description}» — ${money(n.amount)}`];
   if (entry.action === 'deleted') return [`видалив(ла) «${o.description}» — ${money(o.amount)}`];
   const changes = [];
@@ -2015,11 +2040,11 @@ function describeChange(entry, nameOf, categoryOf) {
 
 function historyCard(history, nameOf, categoryOf) {
   const when = (ts) => new Date(ts).toLocaleString('uk-UA', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-  const icons = { created: '➕', updated: '✎', deleted: '🗑' };
+  const icons = { created: '➕', updated: '✎', deleted: '🗑', settled: '💸', unsettled: '↩' };
   return h('div', { class: 'card' },
     h('h2', {}, 'Історія змін'),
     history.length === 0
-      ? h('p', { class: 'empty' }, 'Змін ще немає. Тут з\'являтимуться додавання, редагування та видалення витрат.')
+      ? h('p', { class: 'empty' }, 'Змін ще немає. Тут з\'являтимуться додавання, редагування та видалення витрат і повернення боргів.')
       : h('ul', { class: 'list history' }, history.map((entry) => {
         const [headline, ...details] = describeChange(entry, nameOf, categoryOf);
         return h('li', {},
@@ -2295,6 +2320,7 @@ function transfersCard(groupId, transfers, nameOf, reload) {
               class: 'secondary',
               title: 'Записати, що борг повернено',
               onClick: async (e) => {
+                if (!confirm(`Записати повернення боргу: ${nameOf(t.from)} → ${nameOf(t.to)}, ${formatMoney(t.amount)}?`)) return;
                 e.target.disabled = true;
                 try {
                   await run(supabase.from('settlements').insert({

@@ -735,3 +735,42 @@ test('коментар до витрати й повернення боргу: �
     [gid, users.bohdan, users.anna, 'Готівкою']);
   assert.equal(s.note, 'Готівкою');
 });
+
+test('баланси в базі (список груп) збігаються з розрахунком на сайті; повернення боргу — в історії', async () => {
+  const { computeBalances } = await import('../public/balances.js');
+  const [{ create_group: gid }] = await as('anna', 'select public.create_group($1)', ['Звірка']);
+  await as('anna', 'select public.add_group_member($1, $2)', [gid, 'bohdan@example.com']);
+  await as('anna', 'select public.add_group_member($1, $2)', [gid, 'vira@example.com']);
+  await as('anna', 'select public.set_group_rate(gid => $1, currency => $2, rate => $3)', [gid, 'EUR', 45.5]);
+  const add = (who, payer, amount, shares, extra = '') => as(who,
+    `select public.add_expense(gid => $1, description => 'x', amount => $2, paid_by => $3, shares => $4${extra})`,
+    [gid, amount, users[payer], JSON.stringify(shares.map(([u, a]) => ({ user_id: users[u], amount: a })))]);
+  await add('anna', 'anna', 10000, [['anna', 3334], ['bohdan', 3333], ['vira', 3333]]);
+  await add('bohdan', 'bohdan', 45546, [['anna', 15152], ['bohdan', 30394]], ", expense_currency => 'EUR', original_amount => 1001");
+  await add('vira', 'anna', 25050, [['vira', 25050]]); // борг: Віра винна Анні
+  await as('vira', 'insert into public.settlements (group_id, from_user, to_user, amount) values ($1, $2, $3, 7000)', [gid, users.vira, users.anna]);
+  const [{ id: sid }] = await as('bohdan', 'insert into public.settlements (group_id, from_user, to_user, amount) values ($1, $2, $3, 100) returning id', [gid, users.bohdan, users.anna]);
+  await as('anna', 'delete from public.settlements where id = $1', [sid]);
+
+  const expenses = (await as('anna', 'select id, paid_by, amount from public.expenses where group_id = $1', [gid]));
+  const shares = await as('anna', 'select s.expense_id, s.user_id, s.amount from public.expense_shares s join public.expenses e on e.id = s.expense_id where e.group_id = $1', [gid]);
+  const settlements = await as('anna', 'select from_user, to_user, amount from public.settlements where group_id = $1', [gid]);
+  const site = computeBalances(['anna', 'bohdan', 'vira'].map((k) => users[k]),
+    expenses.map((e) => ({ paidBy: e.paid_by, amount: Number(e.amount),
+      shares: shares.filter((s) => s.expense_id === e.id).map((s) => ({ userId: s.user_id, amount: Number(s.amount) })) })),
+    settlements.map((s) => ({ fromUser: s.from_user, toUser: s.to_user, amount: Number(s.amount) })));
+  for (const who of ['anna', 'bohdan', 'vira']) {
+    const [row] = await as(who, 'select my_balance from public.my_groups() where id = $1', [gid]);
+    assert.equal(Number(row.my_balance), site.get(users[who]), who);
+  }
+  assert.equal(site.get(users.anna), 10000 - 3334 + 25050 - 15152 - 7000);
+
+  const log = await as('bohdan', "select action, changed_by, coalesce(new_data, old_data) ->> 'amount' as amount from public.expense_history where group_id = $1 and action in ('settled', 'unsettled') order by id", [gid]);
+  assert.deepEqual(log.map((r) => [r.action, r.changed_by, r.amount]), [
+    ['settled', users.vira, '7000'], ['settled', users.bohdan, '100'], ['unsettled', users.anna, '100'],
+  ]);
+  await rejects(as('anna', "insert into public.expense_history (group_id, action) values ($1, 'settled')", [gid]), 'permission denied');
+  // Видалення групи цілком (як під час очищення бази) не ламається через запис в історію.
+  await db.query('delete from public.expenses where group_id = $1', [gid]);
+  await db.query('delete from public.groups where id = $1', [gid]);
+});
