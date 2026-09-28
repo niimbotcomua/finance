@@ -582,12 +582,13 @@ function telegramCard() {
         }
         hint.hidden = false;
       }),
-    }, telegramIcon(20), status.linked ? 'Змінити Telegram' : 'Підключити Telegram');
+    }, telegramIcon(20), 'Підключити Telegram');
     connect.classList.add('tg-connect');
     const hint = h('p', { class: 'sub', hidden: true },
       'У Telegram натисніть «Старт» (Start), потім ',
       h('a', { href: '#/profile', onClick: (e) => { e.preventDefault(); render(); } }, 'оновіть цю картку'), '.');
-    const buttons = h('div', { class: 'actions tg-actions' }, connect);
+    // Уже підключено — лишаємо тільки «Вимкнути» (інший Telegram: вимкнути й підключити знову).
+    const buttons = h('div', { class: 'actions tg-actions' }, status.linked ? null : connect);
     if (status.linked) {
       const off = h('button', {
         type: 'button',
