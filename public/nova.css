@@ -204,3 +204,5 @@ html[data-design="nova"] .filter-toggle { text-transform: none; letter-spacing: 
 html[data-design="nova"] .filter-count { border-radius: 4px; }
 html[data-design="nova"] .split-switch { border-radius: 8px; }
 html[data-design="nova"] .split-switch::before, html[data-design="nova"] .split-switch label { border-radius: 6px; }
+html[data-design="nova"] .tag.ok { color: var(--positive); }
+html[data-design="nova"] .tag.bad { color: var(--negative); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--negative) 40%, #fff); }

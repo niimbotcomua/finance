@@ -45,12 +45,14 @@ async function notify(expenseId: number, secret: string) {
   }
 
   for (const { chat_id: chatId, text } of data.messages) {
+    let failure: string | null = null;
     for (const step of planExpenseMessage({ chatId, text, buttons: data.buttons, photoCount: photos.length })) {
       const { form, attached } = buildRequest(step.params, photos);
       const res = await fetch(`https://api.telegram.org/bot${data.token}/${step.method}`, { method: 'POST', body: form });
       const body = await res.json().catch(() => ({}));
       if (!body.ok) {
-        console.error('notify-telegram:', step.method, chatId, body.description ?? res.status);
+        failure ??= String(body.description ?? `HTTP ${res.status}`);
+        console.error('notify-telegram:', step.method, chatId, failure);
         continue;
       }
       // Щоб не завантажувати ті самі фото для кожного учасника — далі шлемо їх за file_id.
@@ -60,6 +62,9 @@ async function notify(expenseId: number, secret: string) {
         if (sizes?.length) photos[i].fileId = sizes[sizes.length - 1].file_id;
       });
     }
+    // Для адмінки: чи дійшло повідомлення (напр. «bot was blocked by the user»).
+    const { error: reportError } = await supabase.rpc('telegram_report_delivery', { secret, chat: chatId, ok: !failure, error: failure });
+    if (reportError) console.error('notify-telegram: звіт про доставку', reportError.message);
   }
 }
 

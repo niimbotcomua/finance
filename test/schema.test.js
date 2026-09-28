@@ -234,6 +234,10 @@ test('теги витрат і супер-адмін', async () => {
   const all = await as('anna', 'select * from public.admin_users()');
   assert.equal(all.length, Object.keys(users).length);
   assert.equal(all.find((u) => u.id === users.anna).is_admin, true);
+  await rejects(as('vira', 'select * from public.admin_notify_status()'), 'адміністратора');
+  const [annaStatus] = (await as('anna', 'select * from public.admin_notify_status()')).filter((u) => u.user_id === users.anna);
+  assert.equal(annaStatus.telegram_linked, false);
+  assert.equal(annaStatus.notify_expense_email, false);
   await as('anna', 'select public.admin_set_admin($1, true)', [users.vira]);
   assert.equal((await as('vira', 'select public.am_i_admin() as a'))[0].a, true);
   await as('anna', 'select public.admin_set_admin($1, false)', [users.vira]);
@@ -643,6 +647,23 @@ test('Telegram: сповіщення з фото квитанцій через �
   assert.match(anna.text, /^✅ <b>Ви додали витрату<\/b> · Кафе\n/);
   assert.match(anna.text, /<blockquote>🫵 Ваша витрата: <b>25,00 грн<\/b>/);
   assert.doesNotMatch(anna.text, /Додав\(ла\)/);
+
+  // Функція повідомляє, чи дійшло; адмін бачить це в списку користувачів.
+  await rejects(as('bohdan', 'select public.telegram_report_delivery($1, 555, true)', [secret]), 'permission denied');
+  await rejects(db.query('select public.telegram_report_delivery($1, 555, true)', ['wrong']), 'forbidden');
+  await db.query('select public.telegram_report_delivery($1, 555, true)', [secret]);
+  await db.query("select public.telegram_report_delivery($1, 777, false, 'Forbidden: bot was blocked by the user')", [secret]);
+  await db.query('insert into private.admins (user_id) values ($1) on conflict do nothing', [users.anna]);
+  const list = await as('anna', 'select * from public.admin_notify_status()');
+  const bohdan = list.find((u) => u.user_id === users.bohdan);
+  const annaRow = list.find((u) => u.user_id === users.anna);
+  assert.equal(bohdan.telegram_linked, true);
+  assert.ok(bohdan.telegram_last_sent_at);
+  assert.equal(bohdan.telegram_error, null);
+  assert.equal(annaRow.telegram_linked, true);
+  assert.equal(annaRow.telegram_error, 'Forbidden: bot was blocked by the user');
+  await db.query('select public.telegram_report_delivery($1, 777, true)', [secret]);
+  assert.equal((await as('anna', 'select * from public.admin_notify_status()')).find((u) => u.user_id === users.anna).telegram_error, null);
 
   await db.query("select private.telegram_notify_setup('')");
   assert.equal((await db.query('select notify_url from private.telegram_bot')).rows[0].notify_url, null);

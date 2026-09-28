@@ -744,14 +744,37 @@ document.addEventListener('click', (e) => {
   if (!e.target.closest?.('.icon-picker')) document.querySelectorAll('.icon-grid').forEach((g) => { g.hidden = true; });
 });
 
+const dateTime = (value) => new Date(value).toLocaleString('uk-UA', { dateStyle: 'short', timeStyle: 'short' });
+
+/** Адмінка: чи підключено Telegram-бота і чи доходять туди сповіщення про витрати. */
+function telegramTag(u) {
+  if (!u.telegram_linked) return h('span', { class: 'tag' }, 'Telegram не підключено');
+  const details = [`Підключено ${dateTime(u.telegram_linked_at)}`];
+  if (u.telegram_last_sent_at) details.push(`останнє сповіщення дійшло ${dateTime(u.telegram_last_sent_at)}`);
+  // Помилка важлива, лише якщо після неї не було ні вдалого надсилання, ні нового підключення.
+  const failing = u.telegram_error && new Date(u.telegram_error_at) > new Date(u.telegram_linked_at)
+    && !(u.telegram_last_sent_at && new Date(u.telegram_last_sent_at) > new Date(u.telegram_error_at));
+  if (failing) {
+    const reason = /blocked/i.test(u.telegram_error) ? 'заблокував(ла) бота'
+      : /deactivated/i.test(u.telegram_error) ? 'акаунт Telegram видалено' : u.telegram_error;
+    return h('span', { class: 'tag bad', title: `${details.join(' · ')}\nПомилка ${dateTime(u.telegram_error_at)}: ${u.telegram_error}` },
+      `✈️ Telegram: не доходить — ${reason}`);
+  }
+  return h('span', { class: 'tag ok', title: details.join(' · ') },
+    u.telegram_last_sent_at ? '✈️ Telegram: отримує сповіщення' : '✈️ Telegram підключено');
+}
+
 async function renderAdmin() {
   if (!currentUser.isAdmin) throw new Error('Цей розділ доступний лише адміністратору');
-  const [categories, users, currencies, settings] = await Promise.all([
+  const [categories, userList, notifyStatus, currencies, settings] = await Promise.all([
     run(supabase.from('categories').select('id, name, icon, sort_order').order('sort_order').order('id')),
     run(supabase.rpc('admin_users')),
+    run(supabase.rpc('admin_notify_status')),
     loadCurrencies(),
     run(supabase.from('app_settings').select('default_currency').maybeSingle()),
   ]);
+  const statusById = new Map(notifyStatus.map((s) => [s.user_id, s]));
+  const users = userList.map((u) => ({ ...u, ...statusById.get(u.id) }));
   const reload = () => renderAdmin().catch((err) => toast(err.message));
 
   const addError = h('div', { class: 'error' });
@@ -840,6 +863,8 @@ async function renderAdmin() {
         h('div', {}, u.name, u.is_admin ? h('span', { class: 'badge' }, 'адмін') : null),
         h('div', { class: 'sub' },
           `${u.email} · з ${new Date(u.created_at).toLocaleDateString('uk-UA')} · груп: ${u.group_count} · витрат: ${u.expense_count}`),
+        h('div', { class: 'notify-tags' }, telegramTag(u),
+          u.notify_expense_email && h('span', { class: 'tag ok', title: 'Отримує листи про нові витрати' }, '📧 Листи')),
       ),
     ),
     u.id !== currentUser.id && h('button', {
